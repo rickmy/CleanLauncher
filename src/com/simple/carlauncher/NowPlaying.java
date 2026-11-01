@@ -49,6 +49,7 @@ final class NowPlaying {
     }
 
     private final Context ctx;
+    private final boolean nwd;
     private final List<Listener> listeners = new ArrayList<>();
     private final Track app = new Track(), local = new Track(), bt = new Track();
     final BtClient btClient = new BtClient();
@@ -59,18 +60,28 @@ final class NowPlaying {
 
     private NowPlaying(Context c) {
         ctx = c;
+        nwd = Profile.isNwd(c);
         sessions = (MediaSessionManager) c.getSystemService(Context.MEDIA_SESSION_SERVICE);
         notificationListener = new ComponentName(c, MediaListener.class);
 
-        IntentFilter f = new IntentFilter();
-        f.addAction("com.android.music.metachanged");
-        f.addAction("com.android.music.playstatechanged");
-        f.addAction("com.bt.ACTION_AVRCP_MUSIC_ID3");
-        f.addAction("com.bt.ACTION_BT_MUSIC_PLAY");
-        f.addAction("com.bt.ACTION_BT_MUSIC_PAUSE");
-        f.addAction("com.bt.ACTION_A2DP_RELEASE");
-        f.addAction("com.bt.ACTION_AVRCP_RELEASE");
-        c.registerReceiver(receiver, f);
+        // Factory Bluetooth and the NWD player are not on this MediaTek unit.
+        if (nwd) {
+            IntentFilter f = new IntentFilter();
+            f.addAction("com.android.music.metachanged");
+            f.addAction("com.android.music.playstatechanged");
+            f.addAction("com.bt.ACTION_AVRCP_MUSIC_ID3");
+            f.addAction("com.bt.ACTION_BT_MUSIC_PLAY");
+            f.addAction("com.bt.ACTION_BT_MUSIC_PAUSE");
+            f.addAction("com.bt.ACTION_A2DP_RELEASE");
+            f.addAction("com.bt.ACTION_AVRCP_RELEASE");
+            c.registerReceiver(receiver, f);
+            btClient.bind(c, () -> {
+                bt.playing = btClient.isMusicPlaying();
+                if (bt.playing) bt.updated = SystemClock.elapsedRealtime();
+                btClient.queryId3();
+                notifyListeners();
+            });
+        }
 
         try {
             sessions.addOnActiveSessionsChangedListener(list -> refreshSessions(), notificationListener);
@@ -78,13 +89,6 @@ final class NowPlaying {
             // Notification access not granted: app sessions are not visible.
         }
         refreshSessions();
-
-        btClient.bind(c, () -> {
-            bt.playing = btClient.isMusicPlaying();
-            if (bt.playing) bt.updated = SystemClock.elapsedRealtime();
-            btClient.queryId3();
-            notifyListeners();
-        });
     }
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
@@ -187,8 +191,13 @@ final class NowPlaying {
 
     // ---------- Public API ----------
 
+    boolean hasSession() {
+        return controller != null;
+    }
+
     /** The source to show: whatever is playing (most recent first), else the last one used. */
     Source current() {
+        if (!nwd) return (app.playing || app.updated > 0) ? Source.APP : null;
         Source best = null;
         long bestTime = -1;
         for (Source s : Source.values()) {
@@ -220,6 +229,12 @@ final class NowPlaying {
     }
 
     void playPause() {
+        if (!nwd) {
+            if (controller == null) return;
+            if (app.playing) controller.getTransportControls().pause();
+            else controller.getTransportControls().play();
+            return;
+        }
         Source s = current();
         if (s == Source.BT) {
             if (Ui.radioIsSource(ctx)) {
@@ -239,6 +254,12 @@ final class NowPlaying {
     }
 
     void skip(boolean next) {
+        if (!nwd) {
+            if (controller == null) return;
+            if (next) controller.getTransportControls().skipToNext();
+            else controller.getTransportControls().skipToPrevious();
+            return;
+        }
         Source s = current();
         if (s == Source.BT) {
             btClient.playControl(next ? BtClient.NEXT : BtClient.PREVIOUS);
@@ -250,8 +271,18 @@ final class NowPlaying {
         }
     }
 
-    /** Opens the screen that belongs to the current source. */
+    /** Opens the app that owns the current session. Never the NWD player on this unit. */
     void open(Context c) {
+        if (!nwd) {
+            if (controller != null) {
+                Intent i = c.getPackageManager().getLaunchIntentForPackage(controller.getPackageName());
+                if (i != null && Ui.safeStart(c, i)) return;
+            }
+            if (!Ui.launchByKeyword(c, "spotify", "youtube music", "música", "musica", "music")) {
+                android.widget.Toast.makeText(c, "No se encontró una app de música", android.widget.Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
         Source s = current();
         if (s == Source.BT) {
             c.startActivity(new Intent(c, BtActivity.class));
@@ -266,7 +297,7 @@ final class NowPlaying {
     void addListener(Listener l) {
         listeners.add(l);
         refreshSessions();
-        if (btClient.isBound()) btClient.queryId3();
+        if (nwd && btClient.isBound()) btClient.queryId3();
     }
 
     void removeListener(Listener l) {

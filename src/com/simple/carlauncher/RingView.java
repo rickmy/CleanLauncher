@@ -1,7 +1,6 @@
 package com.simple.carlauncher;
 
 import android.content.Context;
-import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.SweepGradient;
@@ -16,12 +15,11 @@ public class RingView extends View {
     public RingView(Context c) {
         super(c);
         float d = c.getResources().getDisplayMetrics().density;
-        setLayerType(LAYER_TYPE_SOFTWARE, null);
         ring.setStyle(Paint.Style.STROKE);
         ring.setStrokeWidth(4 * d);
         glow.setStyle(Paint.Style.STROKE);
         glow.setStrokeWidth(8 * d);
-        glow.setMaskFilter(new BlurMaskFilter(8 * d, BlurMaskFilter.Blur.NORMAL));
+        glow.setAlpha(70);
     }
 
     @Override

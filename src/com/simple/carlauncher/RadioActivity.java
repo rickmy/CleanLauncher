@@ -106,7 +106,7 @@ public class RadioActivity extends Activity {
 
         LinearLayout big = new LinearLayout(this);
         big.setGravity(Gravity.CENTER);
-        freq = Ui.text(this, "--.-", 104, Color.WHITE);
+        freq = Ui.text(this, "", 104, Color.WHITE);
         freq.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         freq.setIncludeFontPadding(false);
         big.addView(freq);
@@ -198,6 +198,7 @@ public class RadioActivity extends Activity {
         if (tick++ % 4 == 0 || presets.isEmpty()) presets = radio.presets();
         if (cur == null) {
             station.setText(radio.isConnected() ? "" : "Conectando con la radio…");
+            freq.setText("");
             return;
         }
         band.setText(cur.bandLabel());
@@ -210,7 +211,7 @@ public class RadioActivity extends Activity {
         for (int i = 0; i < presetTiles.size(); i++) {
             RadioClient.Station p = i < presets.size() ? presets.get(i) : null;
             boolean active = p != null && p.frequency == cur.frequency;
-            presetViews.get(i)[0].setText(p == null ? "--" : p.frequencyLabel());
+            presetViews.get(i)[0].setText(p == null ? "" : p.frequencyLabel());
             presetViews.get(i)[1].setText(p == null || p.psName.isEmpty() ? "P" + (i + 1) : p.psName);
             GradientDrawable bg = active
                     ? new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF2EB8FF, 0xFF8A4DFF})

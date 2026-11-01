@@ -41,26 +41,30 @@ public class GreeterService extends Service {
     private MediaPlayer player;
     private boolean waitingForPhone;
     private boolean btPlaying;
+    private boolean nwdHooks;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        radio.bind(this);
-        sound.bind(this, () -> handler.post(() -> EqAuto.apply(this, sound)));
-        IntentFilter f = new IntentFilter();
-        f.addAction("com.nwd.action.ACTION_CHANGE_SOURCE");      // auto EQ: radio vs music curve
-        f.addAction("com.nwd.action.ACTION_VOLUME_STATE_CHANGE"); // auto EQ: loudness
-        f.addAction("com.nwd.action.ACTION_MCU_STATE_CHANGE"); // ACC off (3) / on (1)
-        f.addAction("com.bt.ACTION_A2DP_ESTABLISHED");
-        f.addAction("com.bt.ACTION_AVRCP_ESTABLISHED");
-        f.addAction("com.bt.ACTION_BT_MUSIC_PLAY");
-        f.addAction("com.bt.ACTION_BT_MUSIC_PAUSE");
-        f.addAction("com.simple.carlauncher.TEST_CAR_ON"); // adb test hook
-        registerReceiver(events, f);
+        nwdHooks = Profile.isNwd(this);
+        if (nwdHooks) {
+            radio.bind(this);
+            sound.bind(this, () -> handler.post(() -> EqAuto.apply(this, sound)));
+            IntentFilter f = new IntentFilter();
+            f.addAction("com.nwd.action.ACTION_CHANGE_SOURCE");      // auto EQ: radio vs music curve
+            f.addAction("com.nwd.action.ACTION_VOLUME_STATE_CHANGE"); // auto EQ: loudness
+            f.addAction("com.nwd.action.ACTION_MCU_STATE_CHANGE"); // ACC off (3) / on (1)
+            f.addAction("com.bt.ACTION_A2DP_ESTABLISHED");
+            f.addAction("com.bt.ACTION_AVRCP_ESTABLISHED");
+            f.addAction("com.bt.ACTION_BT_MUSIC_PLAY");
+            f.addAction("com.bt.ACTION_BT_MUSIC_PAUSE");
+            f.addAction("com.simple.carlauncher.TEST_CAR_ON"); // adb test hook
+            registerReceiver(events, f);
+        }
         // Right after boot, bring the last source back and greet. A plain restart of this app
-        // (update, crash) must not touch the audio.
+        // (update, crash) must not touch the audio. This unit has no NWD source to restore.
         if (android.os.SystemClock.elapsedRealtime() < 3 * 60_000) {
-            handler.postDelayed(this::restoreAudio, 4000);
+            if (nwdHooks) handler.postDelayed(this::restoreAudio, 4000);
             schedule();
         }
     }
@@ -161,15 +165,17 @@ public class GreeterService extends Service {
         if (System.currentTimeMillis() - last < MIN_INTERVAL_MS) return;
         handler.removeCallbacks(greet);
         handler.postDelayed(greet, DELAY_MS);
-        Weather.fetch(this, w -> { }); // refresh the cache before speaking
+        if (nwdHooks) Weather.fetch(this, w -> { }); // NWD builds still speak the forecast
     }
 
     private final Runnable greet = () -> {
         if (!Profile.voiceEnabled(this)) return;
         prefs().edit().putLong("last_greet", System.currentTimeMillis()).apply();
         List<String> clips = buildMessage();
-        // Owner's build ships recorded clips; shared builds speak with the device's TTS engine.
-        if (getResources().getIdentifier("v_careful", "raw", getPackageName()) != 0) speak(clips);
+        // This Almera uses the unit's Spanish voice. The es-CO clips stay on the NWD build only.
+        boolean clipsOnDisk = nwdHooks
+                && getResources().getIdentifier("v_careful", "raw", getPackageName()) != 0;
+        if (clipsOnDisk) speak(clips);
         else speakTts(Speech.text(this, clips));
     };
 
@@ -179,11 +185,18 @@ public class GreeterService extends Service {
         if (tts != null) tts.shutdown();
         tts = new android.speech.tts.TextToSpeech(this, status -> {
             if (status != android.speech.tts.TextToSpeech.SUCCESS) return;
-            java.util.Locale es = new java.util.Locale("es", "US");
-            if (tts.isLanguageAvailable(es) < 0) es = new java.util.Locale("es");
-            tts.setLanguage(es);
-            Bundle params = new Bundle();
-            tts.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, params, "greet");
+            java.util.Locale ec = new java.util.Locale("es", "EC");
+            java.util.Locale es = new java.util.Locale("es");
+            if (tts.isLanguageAvailable(ec) >= android.speech.tts.TextToSpeech.LANG_AVAILABLE) {
+                tts.setLanguage(ec);
+            } else {
+                tts.setLanguage(es);
+            }
+            tts.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build());
+            tts.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "greet");
         });
     }
 
@@ -197,7 +210,7 @@ public class GreeterService extends Service {
         if (day == Calendar.MONDAY) clips.add("v_greet_monday");
         else clips.add(h < 12 ? "v_greet_morning" : h < 19 ? "v_greet_afternoon" : "v_greet_night");
 
-        Weather w = Weather.cached(this);
+        Weather w = nwdHooks ? Weather.cached(this) : null;
         if (w != null) {
             clips.add("v_cond_" + conditionClip(w.code));
             int t = Math.max(-5, Math.min(40, w.temp));
@@ -278,9 +291,11 @@ public class GreeterService extends Service {
     public void onDestroy() {
         if (tts != null) tts.shutdown();
         super.onDestroy();
-        unregisterReceiver(events);
-        radio.unbind(this);
-        sound.unbind(this);
+        if (nwdHooks) {
+            unregisterReceiver(events);
+            radio.unbind(this);
+            sound.unbind(this);
+        }
         handler.removeCallbacksAndMessages(null);
         if (player != null) player.release();
     }
@@ -295,7 +310,8 @@ public class GreeterService extends Service {
         @Override
         public void onReceive(Context c, Intent i) {
             c.startService(new Intent(c, GreeterService.class));
-            c.startService(new Intent(c, VolumeOverlay.class));
+            // The firmware draws the volume toast. The NWD overlay fought it on Android 15.
+            if (Profile.isNwd(c)) c.startService(new Intent(c, VolumeOverlay.class));
             c.startService(new Intent(c, Odometer.class));
         }
     }

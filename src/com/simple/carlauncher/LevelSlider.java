@@ -34,9 +34,7 @@ public class LevelSlider extends View {
         d = c.getResources().getDisplayMetrics().density;
         track.setColor(0x26FFFFFF);
         knob.setColor(0xFFFFFFFF);
-        knob.setShadowLayer(6 * d, 0, 0, 0x882EE6FF);
         centre.setColor(0x55FFFFFF);
-        setLayerType(LAYER_TYPE_SOFTWARE, null);
     }
 
     public void setListener(Listener l) {

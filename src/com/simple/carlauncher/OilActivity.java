@@ -32,13 +32,13 @@ public class OilActivity extends Activity {
         super.onCreate(savedInstanceState);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(12), dp(16), dp(16));
         root.setBackground(Ui.background(this));
+        Ui.padBelowSystemBar(root);
 
         LinearLayout bar0 = new LinearLayout(this);
         bar0.setGravity(Gravity.CENTER_VERTICAL);
-        bar0.addView(Ui.iconButton(this, R.drawable.ic_back, 48, false, this::finish),
-                new LinearLayout.LayoutParams(dp(48), dp(48)));
+        bar0.addView(Ui.iconButton(this, R.drawable.ic_back, 56, false, this::finish),
+                new LinearLayout.LayoutParams(dp(56), dp(56)));
         TextView title = Ui.text(this, "Cambio de aceite", 26, Color.WHITE);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
@@ -56,6 +56,7 @@ public class OilActivity extends Activity {
         body.addView(buildActions(), alp);
 
         setContentView(root);
+        root.requestApplyInsets();
     }
 
     private View buildStatus() {

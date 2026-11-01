@@ -1,7 +1,6 @@
 package com.simple.carlauncher;
 
 import android.content.Context;
-import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -23,7 +22,6 @@ public class DialView extends View {
     public DialView(Context c) {
         super(c);
         d = c.getResources().getDisplayMetrics().density;
-        setLayerType(LAYER_TYPE_SOFTWARE, null);
         tick.setStrokeWidth(1.5f * d);
         label.setColor(0x99FFFFFF);
         label.setTextSize(12 * d);
@@ -31,9 +29,9 @@ public class DialView extends View {
         needle.setStrokeWidth(3 * d);
         needle.setStrokeCap(Paint.Cap.ROUND);
         needle.setColor(0xFFFFFFFF);
-        glow.setStrokeWidth(10 * d);
-        glow.setColor(0xFF2EE6FF);
-        glow.setMaskFilter(new BlurMaskFilter(10 * d, BlurMaskFilter.Blur.NORMAL));
+        glow.setStrokeWidth(7 * d);
+        glow.setStrokeCap(Paint.Cap.ROUND);
+        glow.setColor(0x662EE6FF);
     }
 
     /** frequency in MHz*100; ignored for AM. */

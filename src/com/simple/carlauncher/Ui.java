@@ -3,10 +3,14 @@ package com.simple.carlauncher;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
+import android.net.Uri;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -42,14 +46,24 @@ final class Ui {
         c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putString("theme", mode).apply();
     }
 
-    /** Auto = dark while the car's lights are on (ILL wire) or at night. */
+    /**
+     * On this MediaTek unit the NWD headlight bit never arrives, so automatic stays dark
+     * all day (Quito sun washes out the old blue gradient). The NWD path still follows
+     * the ILL wire and the clock.
+     */
     static boolean isDark(Context c) {
         String m = themeMode(c);
         if (THEME_DARK.equals(m)) return true;
-        if (THEME_LIGHT.equals(m)) return false;
-        int ill = android.provider.Settings.System.getInt(c.getContentResolver(), "mcu_no_source_device_state", 0);
+        if (THEME_LIGHT.equals(m) && Profile.isNwd(c)) return false;
+        if (!Profile.isNwd(c)) return true;
+        int ill = Settings.System.getInt(c.getContentResolver(), "mcu_no_source_device_state", 0);
         int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
         return (ill & 2) != 0 || h >= 19 || h < 6;
+    }
+
+    static boolean nightHours() {
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        return h >= 19 || h < 6;
     }
 
     /** Picks the light or dark variant of a gradient. */
@@ -59,13 +73,15 @@ final class Ui {
 
     static Drawable background(Context c) {
         if (isDark(c)) {
+            // Black all day. The halo sits lower at night; it is not the blue daytime wash.
+            boolean night = nightHours();
             GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                    new int[]{0xFF0C0C12, 0xFF050507, 0xFF000000});
+                    new int[]{0xFF0C0C0E, 0xFF070708, 0xFF000000});
             GradientDrawable glow = new GradientDrawable();
             glow.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-            glow.setGradientRadius(dp(c, 560));
-            glow.setGradientCenter(0.95f, 0.95f);
-            glow.setColors(new int[]{0x223F5AFF, 0x003F5AFF});
+            glow.setGradientRadius(dp(c, night ? 240 : 420));
+            glow.setGradientCenter(0.5f, 1.05f);
+            glow.setColors(new int[]{night ? 0x10141820 : 0x24303842, 0x00000000});
             return new LayerDrawable(new Drawable[]{base, glow});
         }
         GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
@@ -123,16 +139,147 @@ final class Ui {
         return b;
     }
 
+    /** Short press: about 0.96 scale, 120 ms. Readable even if the unit animates slowly. */
     static void pressable(View v, float scale) {
+        float s = Math.max(scale, 0.96f);
         v.setClickable(true);
         v.setOnTouchListener((view, e) -> {
             if (e.getAction() == MotionEvent.ACTION_DOWN) {
-                view.animate().scaleX(scale).scaleY(scale).alpha(0.8f).setDuration(90).start();
+                view.animate().scaleX(s).scaleY(s).alpha(0.92f).setDuration(120).start();
             } else if (e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_CANCEL) {
-                view.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(140).start();
+                view.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(120).start();
             }
             return false;
         });
+    }
+
+    /**
+     * Keeps content under the system back / home / recents bar.
+     * The RS8577 reports 1075×600 on a 1280×720 panel. Do not apply a corrective
+     * scale until a touch in each of the four corners has been checked on the unit.
+     */
+    static void padBelowSystemBar(View root) {
+        Context c = root.getContext();
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int top = insets.getSystemWindowInsetTop();
+            if (top < dp(c, 48)) top = dp(c, 48);
+            v.setPadding(
+                    insets.getSystemWindowInsetLeft() + dp(c, 16),
+                    top + dp(c, 8),
+                    insets.getSystemWindowInsetRight() + dp(c, 16),
+                    insets.getSystemWindowInsetBottom() + dp(c, 8));
+            return insets.consumeSystemWindowInsets();
+        });
+        root.requestApplyInsets();
+    }
+
+    static boolean safeStart(Context c, Intent i) {
+        try {
+            c.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Opens the first other launcher activity whose label or package contains a keyword. */
+    static boolean launchByKeyword(Context c, String... keywords) {
+        PackageManager pm = c.getPackageManager();
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        String self = c.getPackageName();
+        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+            if (ri.activityInfo == null || self.equals(ri.activityInfo.packageName)) continue;
+            String label = (ri.loadLabel(pm) + " " + ri.activityInfo.packageName)
+                    .toLowerCase(java.util.Locale.ROOT);
+            for (String k : keywords) {
+                if (label.contains(k)) {
+                    Intent i = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                            .setClassName(ri.activityInfo.packageName, ri.activityInfo.name);
+                    return safeStart(c, i);
+                }
+            }
+        }
+        return false;
+    }
+
+    static void openMaps(Context c) {
+        Intent maps = c.getPackageManager().getLaunchIntentForPackage("com.google.android.apps.maps");
+        if (maps == null || !safeStart(c, maps)) {
+            safeStart(c, new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=")));
+        }
+    }
+
+    /** This unit's radio app. NWD keeps its own tuner screen. */
+    static void openRadio(Context c) {
+        if (Profile.isNwd(c)) {
+            c.startActivity(new Intent(c, RadioActivity.class));
+            return;
+        }
+        if (!launchByKeyword(c, "radio", "fm", "tuner", "dab")) {
+            Toast.makeText(c, "No se encontró la app de radio de este equipo", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** This unit's Bluetooth app. Does not open the NWD phone screen. */
+    static void openBluetooth(Context c) {
+        if (Profile.isNwd(c)) {
+            c.startActivity(new Intent(c, BtActivity.class));
+            return;
+        }
+        if (!launchByKeyword(c, "bluetooth", "bt music", "btmusic")) {
+            safeStart(c, new Intent(Settings.ACTION_BLUETOOTH_SETTINGS));
+        }
+    }
+
+    /** Dialer of this unit. On NWD the factory phone screen is the same place as Bluetooth. */
+    static void openPhone(Context c) {
+        if (Profile.isNwd(c)) {
+            c.startActivity(new Intent(c, BtActivity.class));
+            return;
+        }
+        if (!safeStart(c, new Intent(Intent.ACTION_DIAL))) {
+            launchByKeyword(c, "teléfono", "telefono", "phone", "dialer");
+        }
+    }
+
+    static void openEqualizer(Context c) {
+        if (Profile.isNwd(c)) {
+            c.startActivity(new Intent(c, EqActivity.class));
+            return;
+        }
+        Intent eq = new Intent(android.media.audiofx.AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL);
+        if (!safeStart(c, eq) && !launchByKeyword(c, "ecualiz", "equaliz", "audio", "sonido", "dsp")) {
+            Toast.makeText(c, "No se encontró un ecualizador", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    static boolean notificationAccess(Context c) {
+        String listeners = Settings.Secure.getString(c.getContentResolver(), "enabled_notification_listeners");
+        return listeners != null && listeners.contains(c.getPackageName());
+    }
+
+    static boolean dimmed(Context c) {
+        return c.getSharedPreferences("ui", Context.MODE_PRIVATE).getBoolean("dimmed", false);
+    }
+
+    static void setDimmed(Context c, boolean on) {
+        c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putBoolean("dimmed", on).apply();
+    }
+
+    static void rememberBrightness(Context c, int mode, int level) {
+        c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit()
+                .putInt("brightness_mode", mode)
+                .putInt("brightness", level)
+                .apply();
+    }
+
+    static int savedBrightness(Context c) {
+        return c.getSharedPreferences("ui", Context.MODE_PRIVATE).getInt("brightness", 128);
+    }
+
+    static int savedBrightnessMode(Context c) {
+        return c.getSharedPreferences("ui", Context.MODE_PRIVATE).getInt("brightness_mode",
+                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
     }
 
     static void launch(Context c, String component) {
