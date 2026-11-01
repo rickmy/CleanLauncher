@@ -109,6 +109,8 @@ public class SetupActivity extends Activity {
         tip.setPadding(0, dp(6), 0, dp(4));
         card.addView(tip);
 
+        card.addView(spaced(button("Aceite", 0x334F7BFF,
+                () -> startActivity(new Intent(this, OilActivity.class)))));
         voice = toggle(card, "Saludo por voz al encender el carro", Profile.voiceEnabled(this));
         picoPlaca = toggle(card, "Recordar pico y placa los miércoles (Quito)", Profile.picoPlacaEnabled(this));
         showPhoto();

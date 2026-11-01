@@ -5,7 +5,6 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -16,7 +15,6 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextClock;
@@ -35,10 +33,9 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
     private boolean createdDark;
     private boolean createdNight;
     private boolean radioBound;
-    private ImageView art, playBtn, car;
-    private TextView songSource, songTitle, songArtist, radioLive, dimPill, oilInfo;
+    private ImageView art, playBtn;
+    private TextView songSource, songTitle, songArtist, radioLive, dimPill;
     private LinearLayout band;
-    private GradientDrawable oilBg;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,7 +48,7 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
 
         root.addView(buildHeader());
         root.addView(buildHero());
-        root.addView(buildBand(), new LinearLayout.LayoutParams(-1, dp(100)));
+        root.addView(buildBand(), new LinearLayout.LayoutParams(-1, dp(108)));
         setContentView(root);
         root.requestApplyInsets();
 
@@ -70,94 +67,57 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         startService(new Intent(this, Odometer.class));
     }
 
-    // ---------- Header: one clock, the car, Ajustes ----------
+    // ---------- Header: one clock, then the pills clear of the top-right nav ----------
 
     private View buildHeader() {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, 0, 0, dp(8));
-
-        LinearLayout texts = new LinearLayout(this);
-        texts.setOrientation(LinearLayout.VERTICAL);
-
-        TextView hello = Ui.text(this, Profile.hello(this), 16, 0xB3FFFFFF);
-        hello.setGravity(Gravity.START);
-        texts.addView(hello);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
 
         TextClock time = new TextClock(this);
         time.setFormat24Hour("HH:mm");
-        time.setFormat12Hour("h:mm");
-        time.setTextSize(64);
+        time.setFormat12Hour("HH:mm");
+        time.setTextSize(72);
         time.setTextColor(Color.WHITE);
         time.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         time.setIncludeFontPadding(false);
         time.setGravity(Gravity.START);
-        texts.addView(time);
+        col.addView(time);
 
         TextClock date = new TextClock(this);
         date.setFormat24Hour("EEEE d 'de' MMMM");
         date.setFormat12Hour("EEEE d 'de' MMMM");
-        date.setTextSize(15);
+        date.setTextSize(18);
         date.setTextColor(0xB3FFFFFF);
         date.setGravity(Gravity.START);
-        texts.addView(date);
+        date.setPadding(0, dp(2), 0, 0);
+        col.addView(date);
 
-        oilInfo = Ui.text(this, "", 14, Color.WHITE);
-        oilInfo.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        oilInfo.setMinHeight(dp(56));
-        oilInfo.setPadding(0, dp(8), 0, 0);
-        oilBg = new GradientDrawable();
-        oilBg.setCornerRadius(dp(14));
-        oilInfo.setBackground(oilBg);
-        Ui.pressable(oilInfo, 0.96f);
-        oilInfo.setOnClickListener(v -> startActivity(new Intent(this, OilActivity.class)));
-        texts.addView(oilInfo);
-        row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1f));
-
-        car = new ImageView(this);
-        car.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        showCar();
-        Ui.pressable(car, 0.96f);
-        car.setOnClickListener(v -> startActivity(new Intent(this, SetupActivity.class)));
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(168), dp(88));
-        clp.leftMargin = dp(12);
-        row.addView(car, clp);
-
+        // Nav (recents, home, back) sits in the status bar at the top right.
+        // These pills stay on the next row, full width, so they are not under that cluster.
         LinearLayout pills = new LinearLayout(this);
-        pills.setOrientation(LinearLayout.VERTICAL);
-        pills.setGravity(Gravity.END);
+        pills.setOrientation(LinearLayout.HORIZONTAL);
+        pills.setGravity(Gravity.CENTER_VERTICAL);
         dimPill = pill(dimLabel(), this::toggleDim);
-        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(-2, -2);
-        dlp.bottomMargin = dp(8);
-        pills.addView(dimPill, dlp);
-        pills.addView(pill("Ajustes", () -> startActivity(new Intent(this, SetupActivity.class))));
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(-2, -2);
-        plp.leftMargin = dp(12);
-        row.addView(pills, plp);
-        return row;
-    }
-
-    private void showCar() {
-        Bitmap own = Profile.carPhoto(this);
-        int bundled = Profile.bundledCar(this, false);
-        car.clearColorFilter();
-        if (own != null) car.setImageBitmap(own);
-        else if (bundled != 0) car.setImageResource(bundled);
-        else {
-            car.setImageResource(R.drawable.ic_car);
-            car.setColorFilter(0x66FFFFFF);
-        }
+        LinearLayout.LayoutParams left = new LinearLayout.LayoutParams(0, dp(64), 1f);
+        left.rightMargin = dp(12);
+        pills.addView(dimPill, left);
+        pills.addView(pill("Ajustes", () -> startActivity(new Intent(this, SetupActivity.class))),
+                new LinearLayout.LayoutParams(0, dp(64), 1f));
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(-1, dp(64));
+        plp.topMargin = dp(10);
+        col.addView(pills, plp);
+        return col;
     }
 
     private TextView pill(String label, Runnable action) {
-        TextView b = Ui.text(this, label, 16, Color.WHITE);
-        b.setMinWidth(dp(96));
-        b.setMinHeight(dp(56));
+        TextView b = Ui.text(this, label, 20, Color.WHITE);
+        b.setMinHeight(dp(64));
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(18), dp(12), dp(18), dp(12));
+        b.setPadding(dp(24), dp(12), dp(24), dp(12));
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(0x33FFFFFF);
-        bg.setCornerRadius(dp(28));
+        bg.setCornerRadius(dp(32));
+        bg.setStroke(dp(1), 0x66FFFFFF);
         b.setBackground(bg);
         Ui.pressable(b, 0.96f);
         b.setOnClickListener(v -> action.run());
@@ -214,8 +174,9 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
     private View buildHero() {
         FrameLayout card = new FrameLayout(this);
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xFF141416);
+        bg.setColor(0xFF16161A);
         bg.setCornerRadius(dp(20));
+        bg.setStroke(dp(1), 0x33FFFFFF);
         card.setBackground(bg);
         card.setClipToOutline(true);
 
@@ -225,46 +186,53 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
 
         View shade = new View(this);
         shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{0xF0101012, 0xCC101012, 0x66101012}));
+                new int[]{0xF0101012, 0xE0101012, 0xC0101012}));
         card.addView(shade, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.VERTICAL);
+        body.setOrientation(LinearLayout.HORIZONTAL);
         body.setGravity(Gravity.CENTER_VERTICAL);
-        body.setPadding(dp(28), dp(20), dp(28), dp(20));
+        body.setPadding(dp(28), dp(16), dp(24), dp(16));
 
-        songSource = Ui.text(this, "MÚSICA", 13, 0xCCFFFFFF);
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setGravity(Gravity.CENTER_VERTICAL);
+
+        songSource = Ui.text(this, "MÚSICA", 16, 0xCCFFFFFF);
         songSource.setGravity(Gravity.START);
         songSource.setLetterSpacing(0.08f);
-        body.addView(songSource);
+        texts.addView(songSource);
 
-        songTitle = Ui.text(this, "Nada sonando", 32, Color.WHITE);
+        songTitle = Ui.text(this, "Nada sonando", 44, Color.WHITE);
         songTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         songTitle.setGravity(Gravity.START);
         songTitle.setSingleLine(false);
         songTitle.setMaxLines(2);
-        songTitle.setPadding(0, dp(8), 0, 0);
-        body.addView(songTitle);
+        songTitle.setPadding(0, dp(6), 0, 0);
+        texts.addView(songTitle);
 
-        songArtist = Ui.text(this, "", 18, 0xB3FFFFFF);
+        songArtist = Ui.text(this, "", 22, 0xB3FFFFFF);
         songArtist.setGravity(Gravity.START);
         songArtist.setSingleLine(false);
         songArtist.setMaxLines(2);
-        songArtist.setPadding(0, dp(4), 0, dp(18));
-        body.addView(songArtist);
+        songArtist.setPadding(0, dp(4), 0, 0);
+        texts.addView(songArtist);
+        body.addView(texts, new LinearLayout.LayoutParams(0, -2, 1f));
 
         LinearLayout controls = new LinearLayout(this);
-        controls.setGravity(Gravity.CENTER_VERTICAL);
-        controls.addView(Ui.iconButton(this, R.drawable.ic_prev, 64, false, this::skipBack),
-                new LinearLayout.LayoutParams(dp(64), dp(64)));
-        playBtn = Ui.iconButton(this, R.drawable.ic_play, 76, true, this::togglePlay);
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(76), dp(76));
-        plp.setMargins(dp(16), 0, dp(16), 0);
+        controls.setGravity(Gravity.CENTER);
+        controls.addView(Ui.iconButton(this, R.drawable.ic_prev, 72, false, this::skipBack),
+                new LinearLayout.LayoutParams(dp(72), dp(72)));
+        playBtn = Ui.iconButton(this, R.drawable.ic_play, 84, true, this::togglePlay);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(84), dp(84));
+        plp.setMargins(dp(18), 0, dp(18), 0);
         controls.addView(playBtn, plp);
-        controls.addView(Ui.iconButton(this, R.drawable.ic_next, 64, false, this::skipForward),
-                new LinearLayout.LayoutParams(dp(64), dp(64)));
-        body.addView(controls);
-        card.addView(body, new FrameLayout.LayoutParams(-1, -1));
+        controls.addView(Ui.iconButton(this, R.drawable.ic_next, 72, false, this::skipForward),
+                new LinearLayout.LayoutParams(dp(72), dp(72)));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-2, -2);
+        clp.leftMargin = dp(20);
+        body.addView(controls, clp);
+        card.addView(body, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER_VERTICAL));
 
         Ui.pressable(card, 0.96f);
         card.setOnClickListener(v -> nowPlaying.open(this));
@@ -331,13 +299,14 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
     // ---------- Band ----------
 
     private View buildBand() {
-        HorizontalScrollView scroll = new HorizontalScrollView(this);
-        scroll.setHorizontalScrollBarEnabled(false);
-        scroll.setFillViewport(true);
         band = new LinearLayout(this);
+        band.setOrientation(LinearLayout.HORIZONTAL);
         band.setGravity(Gravity.CENTER_VERTICAL);
-        scroll.addView(band, new FrameLayout.LayoutParams(-2, -1));
-        return scroll;
+        return band;
+    }
+
+    private LinearLayout.LayoutParams tileSlot() {
+        return new LinearLayout.LayoutParams(0, -1, 1f);
     }
 
     private void fillBand() {
@@ -362,21 +331,18 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         LinearLayout tile = new LinearLayout(this);
         tile.setOrientation(LinearLayout.VERTICAL);
         tile.setGravity(Gravity.CENTER);
-        tile.setMinimumWidth(dp(104));
         tile.setMinimumHeight(dp(84));
-        tile.setPadding(dp(10), dp(8), dp(10), dp(8));
+        tile.setPadding(dp(4), dp(8), dp(4), dp(8));
         ImageView iv = new ImageView(this);
         iv.setImageResource(icon);
         iv.setColorFilter(Color.WHITE);
-        tile.addView(iv, new LinearLayout.LayoutParams(dp(36), dp(36)));
-        TextView label = Ui.text(this, name, 15, Color.WHITE);
+        tile.addView(iv, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        TextView label = Ui.text(this, name, 16, Color.WHITE);
         label.setPadding(0, dp(6), 0, 0);
         tile.addView(label);
         Ui.pressable(tile, 0.96f);
         tile.setOnClickListener(v -> action.run());
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -1);
-        lp.setMargins(dp(4), 0, dp(4), 0);
-        band.addView(tile, lp);
+        band.addView(tile, tileSlot());
         return tile;
     }
 
@@ -390,13 +356,12 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         LinearLayout tile = new LinearLayout(this);
         tile.setOrientation(LinearLayout.VERTICAL);
         tile.setGravity(Gravity.CENTER);
-        tile.setMinimumWidth(dp(104));
         tile.setMinimumHeight(dp(84));
-        tile.setPadding(dp(10), dp(8), dp(10), dp(8));
+        tile.setPadding(dp(4), dp(8), dp(4), dp(8));
         ImageView iv = new ImageView(this);
         iv.setImageDrawable(ri.loadIcon(pm));
-        tile.addView(iv, new LinearLayout.LayoutParams(dp(36), dp(36)));
-        TextView label = Ui.text(this, ri.loadLabel(pm), 15, Color.WHITE);
+        tile.addView(iv, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        TextView label = Ui.text(this, ri.loadLabel(pm), 16, Color.WHITE);
         label.setPadding(0, dp(6), 0, 0);
         tile.addView(label);
         Ui.pressable(tile, 0.96f);
@@ -407,9 +372,7 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
                     .setClassName(pkg, cls);
             Ui.safeStart(this, i);
         });
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -1);
-        lp.setMargins(dp(4), 0, dp(4), 0);
-        band.addView(tile, lp);
+        band.addView(tile, tileSlot());
     }
 
     private void updateRadio() {
@@ -428,18 +391,6 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         }
         radioLive.setText(label);
         radioLive.setVisibility(View.VISIBLE);
-    }
-
-    private void updateOil() {
-        if (!Odometer.isConfigured(this)) {
-            oilInfo.setText("Aceite");
-            oilBg.setColor(0x00000000);
-            return;
-        }
-        int left = Odometer.remainingKm(this);
-        oilInfo.setText(left < 0 ? "Aceite: ya toca el cambio" : "Aceite: faltan " + OilActivity.fmt(left) + " km");
-        oilBg.setColor(left < 0 ? 0xCCE53935 : left <= Odometer.WARN_KM ? 0xCCFF9800 : 0x26FFFFFF);
-        oilInfo.setPadding(dp(12), dp(6), dp(12), dp(6));
     }
 
     private final Runnable nightWatch = new Runnable() {
@@ -466,9 +417,7 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
             recreate();
             return;
         }
-        showCar();
         fillBand();
-        updateOil();
         dimPill.setText(dimLabel());
         if (Ui.dimmed(this)) applyWindowBrightness(12f / 255f);
         if (Profile.isNwd(this)) handler.post(radioPoll);
