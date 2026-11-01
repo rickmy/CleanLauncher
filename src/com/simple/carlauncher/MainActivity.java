@@ -312,7 +312,7 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
     private void fillBand() {
         band.removeAllViews();
         radioLive = null;
-        addNamed(R.drawable.ic_nav, "Mapas", () -> Ui.openMaps(this));
+        addNamed(R.drawable.ic_nav, "Mapas", () -> startActivity(new Intent(this, MapActivity.class)));
         View radioTile = addNamed(R.drawable.ic_radio, "Radio", () -> Ui.openRadio(this));
         radioLive = new TextView(this);
         radioLive.setTextColor(0xB3FFFFFF);
@@ -323,6 +323,7 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         addNamed(R.drawable.ic_phone, "Teléfono", () -> Ui.openPhone(this));
         addNamed(R.drawable.ic_bluetooth, "Bluetooth", () -> Ui.openBluetooth(this));
         addNamed(R.drawable.ic_music, "Música", () -> nowPlaying.open(this));
+        addNamed(R.drawable.ic_play, "YT Music", () -> Ui.openYouTubeMusic(this));
         for (String flat : Profile.favorites(this)) addFavorite(flat);
         addNamed(R.drawable.ic_apps, "Apps", () -> startActivity(new Intent(this, AppsActivity.class)));
     }
@@ -338,6 +339,8 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         iv.setColorFilter(Color.WHITE);
         tile.addView(iv, new LinearLayout.LayoutParams(dp(40), dp(40)));
         TextView label = Ui.text(this, name, 16, Color.WHITE);
+        label.setSingleLine(true);
+        label.setGravity(Gravity.CENTER);
         label.setPadding(0, dp(6), 0, 0);
         tile.addView(label);
         Ui.pressable(tile, 0.96f);

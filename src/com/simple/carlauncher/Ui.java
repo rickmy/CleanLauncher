@@ -231,6 +231,15 @@ final class Ui {
         }
     }
 
+    /** YouTube Music. A missing package is a short notice, not a crash. */
+    static void openYouTubeMusic(Context c) {
+        Intent launch = c.getPackageManager()
+                .getLaunchIntentForPackage("com.google.android.apps.youtube.music");
+        if (launch == null || !safeStart(c, launch)) {
+            Toast.makeText(c, "YT Music no está instalado", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     /** Dialer of this unit. On NWD the factory phone screen is the same place as Bluetooth. */
     static void openPhone(Context c) {
         if (Profile.isNwd(c)) {

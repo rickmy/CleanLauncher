@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.simple.carlauncher"
-    android:versionCode="8"
-    android:versionName="6.2">
+    android:versionCode="9"
+    android:versionName="6.3">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
@@ -32,6 +33,13 @@
 
         <activity
             android:name=".AppsActivity"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|locale" />
+
+        <activity
+            android:name=".MapActivity"
+            android:label="Mapas"
+            android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:configChanges="orientation|screenSize|keyboardHidden|locale" />
 
