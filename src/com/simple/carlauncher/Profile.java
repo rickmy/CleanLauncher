@@ -7,6 +7,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Per-user settings so the launcher can be shared: driver name, own car photo and which
@@ -55,9 +57,37 @@ final class Profile {
         return f.exists() ? BitmapFactory.decodeFile(f.getAbsolutePath()) : null;
     }
 
-    /** Car pictures bundled only in the owner's personal build (0 when absent). */
+    /**
+     * Photo of this Almera. The Chevrolet pictures shipped with the NWD build are not used.
+     * Lights-on art does not exist for this panel (0).
+     */
     static int bundledCar(Context c, boolean lights) {
-        return c.getResources().getIdentifier(lights ? "optra_lights" : "optra", "drawable", c.getPackageName());
+        if (lights) return 0;
+        return c.getResources().getIdentifier("almera", "drawable", c.getPackageName());
+    }
+
+    // ---------- Band favorites (component names, in the order the driver added them) ----------
+
+    static List<String> favorites(Context c) {
+        String raw = prefs(c).getString("band_favorites", "");
+        List<String> out = new ArrayList<>();
+        if (raw.isEmpty()) return out;
+        for (String s : raw.split("\n")) {
+            if (!s.isEmpty()) out.add(s);
+        }
+        return out;
+    }
+
+    static boolean isFavorite(Context c, String component) {
+        return favorites(c).contains(component);
+    }
+
+    static void toggleFavorite(Context c, String component) {
+        List<String> cur = favorites(c);
+        if (!cur.remove(component)) cur.add(component);
+        StringBuilder sb = new StringBuilder();
+        for (String s : cur) sb.append(s).append('\n');
+        prefs(c).edit().putString("band_favorites", sb.toString()).apply();
     }
 
     // ---------- Device ----------

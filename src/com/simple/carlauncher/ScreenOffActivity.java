@@ -24,10 +24,17 @@ public class ScreenOffActivity extends Activity {
 
     private static final String TAG = "ScreenOff";
     private boolean off;
+    private boolean listening;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Allwinner backlight does not drive this panel. Do not cover the reverse camera
+        // with a black activity that leaves the LCD on.
+        if (!Profile.isNwd(this)) {
+            finish();
+            return;
+        }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         View black = new View(this);
         black.setBackgroundColor(Color.BLACK);
@@ -39,6 +46,7 @@ public class ScreenOffActivity extends Activity {
         f.addAction("com.bt.ACTION_BT_OUTGOING_CALL");
         f.addAction(Intent.ACTION_SCREEN_OFF); // ACC off / sleep
         registerReceiver(wake, f);
+        listening = true;
     }
 
     @Override
@@ -57,9 +65,9 @@ public class ScreenOffActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (listening) unregisterReceiver(wake);
+        if (Profile.isNwd(this)) setBacklight(true);
         super.onDestroy();
-        unregisterReceiver(wake);
-        setBacklight(true);
     }
 
     @Override
@@ -80,8 +88,9 @@ public class ScreenOffActivity extends Activity {
         }
     };
 
-    /** android.os.Hardware is an NWD/Allwinner framework addition; call it reflectively. */
-    static boolean setBacklight(boolean on) {
+    /** android.os.Hardware is an NWD/Allwinner framework addition. It does not blank this panel. */
+    private boolean setBacklight(boolean on) {
+        if (!Profile.isNwd(this)) return false;
         try {
             Object r = Class.forName("android.os.Hardware")
                     .getMethod("setLcdBacklightEnable", int.class)

@@ -41,12 +41,12 @@ public class SetupActivity extends Activity {
         super.onCreate(savedInstanceState);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(12), dp(16), dp(14));
         root.setBackground(Ui.background(this));
+        Ui.padBelowSystemBar(root);
 
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = Ui.text(this, "Configura tu inicio", 26, Color.WHITE);
+        TextView title = Ui.text(this, "Configura tu inicio", 26, Ui.ink(this));
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         bar.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -64,6 +64,7 @@ public class SetupActivity extends Activity {
         body.addView(scroll(buildPermissions()), rlp);
 
         setContentView(root);
+        root.requestApplyInsets();
     }
 
     private View scroll(View content) {
@@ -83,12 +84,12 @@ public class SetupActivity extends Activity {
         name.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         name.setText(Profile.name(this));
         name.setHint("Ej.: Ana");
-        name.setTextColor(Color.WHITE);
-        name.setHintTextColor(0x66FFFFFF);
+        name.setTextColor(Ui.ink(this));
+        name.setHintTextColor(Ui.lightSurface(this) ? 0x992A3038 : 0x66FFFFFF);
         name.setTextSize(20);
         card.addView(name);
 
-        card.addView(label("Foto de tu carro"));
+        card.addView(label("Foto de tu Almera"));
         carPreview = new ImageView(this);
         carPreview.setScaleType(ImageView.ScaleType.FIT_CENTER);
         card.addView(carPreview, new LinearLayout.LayoutParams(-1, dp(110)));
@@ -97,17 +98,19 @@ public class SetupActivity extends Activity {
                 new LinearLayout.LayoutParams(0, -2, 1f));
         LinearLayout.LayoutParams qlp = new LinearLayout.LayoutParams(0, -2, 1f);
         qlp.leftMargin = dp(8);
-        photoRow.addView(button("Quitar", 0x26FFFFFF, () -> {
+        photoRow.addView(button("Quitar", Ui.lightSurface(this) ? 0xFF2A3038 : 0x26FFFFFF, () -> {
             Profile.carPhotoFile(this).delete();
             showPhoto();
         }), qlp);
         card.addView(photoRow);
-        TextView tip = Ui.text(this, "Consejo: una foto del carro en diagonal, de frente, con fondo despejado.", 12, 0x99FFFFFF);
+        TextView tip = Ui.text(this, "Si no eliges otra, el inicio muestra la foto del Almera. El saludo usa la voz en español del equipo.", 12, Ui.muted(this));
         tip.setSingleLine(false);
         tip.setGravity(Gravity.START);
         tip.setPadding(0, dp(6), 0, dp(4));
         card.addView(tip);
 
+        card.addView(spaced(button("Aceite", 0x334F7BFF,
+                () -> startActivity(new Intent(this, OilActivity.class)))));
         voice = toggle(card, "Saludo por voz al encender el carro", Profile.voiceEnabled(this));
         picoPlaca = toggle(card, "Recordar pico y placa los miércoles (Quito)", Profile.picoPlacaEnabled(this));
         showPhoto();
@@ -119,24 +122,40 @@ public class SetupActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(18), dp(14), dp(18), dp(14));
         card.addView(label("Para que todo funcione"));
+        TextView musicAsk = Ui.text(this, "Para ver la canción en el inicio, permite el acceso a las notificaciones.", 14, Ui.ink(this));
+        musicAsk.setSingleLine(false);
+        musicAsk.setGravity(Gravity.START);
+        musicAsk.setPadding(0, 0, 0, dp(8));
+        card.addView(musicAsk);
 
-        homeBtn = button("", 0x334F7BFF, () -> openSettings(new Intent(Settings.ACTION_HOME_SETTINGS)));
-        card.addView(spaced(homeBtn));
-        locationBtn = button("", 0x334F7BFF,
-                () -> requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1));
-        card.addView(spaced(locationBtn));
-        notifBtn = button("", 0x334F7BFF,
+        notifBtn = button("", 0xFF2E6BFF,
                 () -> openSettings(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")));
         card.addView(spaced(notifBtn));
+        homeBtn = button("", 0xFF2457D6, () -> openSettings(new Intent(Settings.ACTION_HOME_SETTINGS)));
+        card.addView(spaced(homeBtn));
+        locationBtn = button("", 0xFF2457D6,
+                () -> requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1));
+        card.addView(spaced(locationBtn));
         if (Profile.isNwd(this)) {
             overlayBtn = button("", 0x334F7BFF, () -> openSettings(new Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + getPackageName()))));
             card.addView(spaced(overlayBtn));
+        } else {
+            card.addView(spaced(button("Permitir atenuar la pantalla", 0xFF2457D6, () -> openSettings(
+                    new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                            android.net.Uri.parse("package:" + getPackageName()))))));
+            card.addView(spaced(button(Ui.dimmed(this) ? "Brillo" : "Atenuar", 0xFF2457D6, () -> {
+                Ui.toggleDim(this);
+                recreate();
+            })));
+            card.addView(spaced(button("Ecualizador", 0xFF2457D6, () -> Ui.openEqualizer(this))));
+            card.addView(spaced(button("Ajustes del equipo", 0xFF2457D6,
+                    () -> openSettings(new Intent(Settings.ACTION_SETTINGS)))));
         }
 
         TextView info = Ui.text(this, Profile.isNwd(this)
                 ? "Radio NWD detectada: radio FM, Bluetooth, ecualizador y aviso de volumen activados."
-                : "En esta radio se usarán sus propias apps de radio, Bluetooth y ecualizador.", 13, 0xB3FFFFFF);
+                : "En esta radio se usarán sus propias apps de radio, Bluetooth y ecualizador.", 13, Ui.muted(this));
         info.setSingleLine(false);
         info.setGravity(Gravity.START);
         info.setPadding(0, dp(12), 0, 0);
@@ -147,7 +166,7 @@ public class SetupActivity extends Activity {
     // ---------- Helpers ----------
 
     private TextView label(String s) {
-        TextView t = Ui.text(this, s, 15, 0xCCFFFFFF);
+        TextView t = Ui.text(this, s, 15, Ui.muted(this));
         t.setGravity(Gravity.START);
         t.setPadding(0, dp(10), 0, dp(6));
         return t;
@@ -155,7 +174,8 @@ public class SetupActivity extends Activity {
 
     private TextView button(String s, int color, Runnable r) {
         TextView b = Ui.text(this, s, 16, Color.WHITE);
-        b.setPadding(dp(16), dp(12), dp(16), dp(12));
+        b.setMinHeight(dp(56));
+        b.setPadding(dp(16), dp(14), dp(16), dp(14));
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(color);
         bg.setCornerRadius(dp(14));
@@ -175,7 +195,7 @@ public class SetupActivity extends Activity {
     private Switch toggle(LinearLayout parent, String text, boolean on) {
         Switch s = new Switch(this);
         s.setText(text);
-        s.setTextColor(Color.WHITE);
+        s.setTextColor(Ui.ink(this));
         s.setTextSize(15);
         s.setChecked(on);
         s.setPadding(0, dp(10), 0, dp(4));
@@ -193,13 +213,18 @@ public class SetupActivity extends Activity {
 
     private void showPhoto() {
         Bitmap b = Profile.carPhoto(this);
+        carPreview.clearColorFilter();
         if (b != null) {
-            carPreview.clearColorFilter();
             carPreview.setImageBitmap(b);
-        } else {
-            carPreview.setImageResource(R.drawable.ic_car);
-            carPreview.setColorFilter(0x55FFFFFF);
+            return;
         }
+        int bundled = Profile.bundledCar(this, false);
+        if (bundled != 0) {
+            carPreview.setImageResource(bundled);
+            return;
+        }
+        carPreview.setImageResource(R.drawable.ic_car);
+        carPreview.setColorFilter(0x55FFFFFF);
     }
 
     private void pickPhoto() {
@@ -237,10 +262,8 @@ public class SetupActivity extends Activity {
         boolean isHome = getPackageName().equals(homePackage());
         homeBtn.setText(check(isHome) + "Usar como pantalla de inicio");
         locationBtn.setText(check(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) + "Ubicación (para el clima)");
-        String listeners = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
-        notifBtn.setText(check(listeners != null && listeners.contains(getPackageName()))
-                + "Ver la música de otras apps");
+                == PackageManager.PERMISSION_GRANTED) + "Ubicación (para el kilometraje del aceite)");
+        notifBtn.setText(check(Ui.notificationAccess(this)) + "Permitir ver la música");
         if (overlayBtn != null) {
             overlayBtn.setText(check(Settings.canDrawOverlays(this)) + "Aviso de volumen");
         }
