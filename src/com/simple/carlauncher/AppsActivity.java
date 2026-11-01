@@ -46,11 +46,11 @@ public class AppsActivity extends Activity {
 
         ImageView back = new ImageView(this);
         back.setImageResource(R.drawable.ic_back);
-        back.setColorFilter(Color.WHITE);
+        back.setColorFilter(Ui.ink(this));
         back.setPadding(dp(14), dp(14), dp(14), dp(14));
         GradientDrawable circle = new GradientDrawable();
         circle.setShape(GradientDrawable.OVAL);
-        circle.setColor(0x1FFFFFFF);
+        circle.setColor(Ui.lightSurface(this) ? 0x14000000 : 0x1FFFFFFF);
         back.setBackground(circle);
         MainActivity.pressable(back);
         back.setOnClickListener(v -> finish());
@@ -61,13 +61,13 @@ public class AppsActivity extends Activity {
         TextView title = new TextView(this);
         title.setText("Aplicaciones");
         title.setTextSize(26);
-        title.setTextColor(Color.WHITE);
+        title.setTextColor(Ui.ink(this));
         title.setPadding(dp(16), 0, 0, 0);
         titles.addView(title);
         TextView hint = new TextView(this);
-        hint.setText("Mantén pulsada una app para ponerla en la banda");
+        hint.setText("Mantén pulsada una app para ponerla en el inicio");
         hint.setTextSize(13);
-        hint.setTextColor(0x99FFFFFF);
+        hint.setTextColor(Ui.muted(this));
         hint.setPadding(dp(16), dp(2), 0, 0);
         titles.addView(hint);
         header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -93,6 +93,19 @@ public class AppsActivity extends Activity {
             });
             header.addView(theme);
         }
+        TextView settings = new TextView(this);
+        settings.setText("Ajustes");
+        settings.setTextSize(16);
+        settings.setTextColor(Ui.ink(this));
+        settings.setMinHeight(dp(56));
+        settings.setGravity(Gravity.CENTER);
+        settings.setPadding(dp(18), dp(10), dp(18), dp(10));
+        settings.setBackground(Ui.card(this));
+        MainActivity.pressable(settings);
+        settings.setOnClickListener(v -> startActivity(new Intent(this, SetupActivity.class)));
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-2, -2);
+        slp.leftMargin = dp(8);
+        header.addView(settings, slp);
         root.addView(header);
 
         GridView grid = new GridView(this);
@@ -166,7 +179,7 @@ public class AppsActivity extends Activity {
         box.setPadding(dp(20), dp(18), dp(20), dp(16));
         box.setBackground(Ui.card(this));
 
-        TextView heading = Ui.text(this, name, 22, Color.WHITE);
+        TextView heading = Ui.text(this, name, 22, Ui.ink(this));
         heading.setGravity(Gravity.START);
         heading.setPadding(0, 0, 0, dp(14));
         box.addView(heading);
@@ -174,7 +187,7 @@ public class AppsActivity extends Activity {
             dialog.dismiss();
             launch(ri);
         }));
-        box.addView(sheetButton(fav ? "Quitar de la banda" : "Poner en la banda", () -> {
+        box.addView(sheetButton(fav ? "Quitar del inicio" : "Poner en el inicio", () -> {
             Profile.toggleFavorite(this, component);
             dialog.dismiss();
         }));
@@ -187,12 +200,12 @@ public class AppsActivity extends Activity {
     }
 
     private TextView sheetButton(String label, Runnable action) {
-        TextView b = Ui.text(this, label, 18, Color.WHITE);
+        TextView b = Ui.text(this, label, 18, Ui.ink(this));
         b.setMinHeight(dp(56));
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(16), dp(12), dp(16), dp(12));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0x33FFFFFF);
+        bg.setColor(Ui.lightSurface(this) ? 0xFFE6E8EC : 0x33FFFFFF);
         bg.setCornerRadius(dp(14));
         b.setBackground(bg);
         Ui.pressable(b, 0.96f);
@@ -217,7 +230,7 @@ public class AppsActivity extends Activity {
             item.addView(icon, new LinearLayout.LayoutParams(dp(64), dp(64)));
             label = new TextView(this);
             label.setTextSize(15);
-            label.setTextColor(0xE6FFFFFF);
+            label.setTextColor(Ui.ink(this));
             label.setGravity(Gravity.CENTER);
             label.setSingleLine(true);
             label.setEllipsize(TextUtils.TruncateAt.END);

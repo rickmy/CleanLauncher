@@ -1,41 +1,50 @@
 package com.simple.carlauncher;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.graphics.Color;
+import android.graphics.Bitmap;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Handler;
-import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
-import android.view.WindowManager;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextClock;
 import android.widget.TextView;
 
 /**
- * Home for the Almera's MediaTek unit: one light clock, the Android session that is
- * playing, and a named band. NWD screens stay behind {@link Profile#isNwd}.
+ * Home for the Almera: clock and car on the left, cards on the right.
+ * Light from 06:00 through 18:59, dark from 19:00 through 05:59.
  */
 public class MainActivity extends Activity implements NowPlaying.Listener {
 
     private final Handler handler = new Handler();
-    private final RadioClient radio = new RadioClient();
     private NowPlaying nowPlaying;
 
     private boolean createdDark;
-    private boolean createdNight;
-    private boolean radioBound;
-    private ImageView art, playBtn;
-    private TextView songSource, songTitle, songArtist, radioLive, dimPill;
-    private LinearLayout band;
+    private boolean createdZlink;
+    private ImageView playBtn;
+    private TextView songTitle, songArtist, speedValue;
+    private SpeedScale speedScale;
+    private LinearLayout tiles;
+    private LocationManager locations;
+    private boolean listening;
+
+    private final LocationListener speedFix = new LocationListener() {
+        @Override
+        public void onLocationChanged(Location location) {
+            showSpeed(location);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,206 +55,348 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         root.setBackground(Ui.background(this));
         Ui.padBelowSystemBar(root);
 
-        root.addView(buildHeader());
-        root.addView(buildHero());
-        root.addView(buildBand(), new LinearLayout.LayoutParams(-1, dp(108)));
+        LinearLayout columns = new LinearLayout(this);
+        columns.setOrientation(LinearLayout.HORIZONTAL);
+        columns.setGravity(Gravity.CENTER_VERTICAL);
+        columns.addView(buildLeft(), new LinearLayout.LayoutParams(0, -1, 1.05f));
+        LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(0, -1, 1f);
+        rightLp.leftMargin = dp(12);
+        columns.addView(buildRight(), rightLp);
+        root.addView(columns, new LinearLayout.LayoutParams(-1, 0, 1f));
+
         setContentView(root);
         root.requestApplyInsets();
 
         nowPlaying = NowPlaying.get(this);
         createdDark = Ui.isDark(this);
-        createdNight = Ui.nightHours();
+        createdZlink = Ui.findZlink(this) != null;
         if (!Profile.isSetupDone(this)) {
             startActivity(new Intent(this, SetupActivity.class));
         }
         if (Profile.isNwd(this)) {
-            radio.bind(this);
-            radioBound = true;
             startService(new Intent(this, VolumeOverlay.class));
         }
         startService(new Intent(this, GreeterService.class));
         startService(new Intent(this, Odometer.class));
+        fillTiles();
     }
 
-    // ---------- Header: one clock, then the pills clear of the top-right nav ----------
+    // ---------- Left: clock, date, Almera, GPS speed ----------
 
-    private View buildHeader() {
+    private View buildLeft() {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
 
         TextClock time = new TextClock(this);
         time.setFormat24Hour("HH:mm");
         time.setFormat12Hour("HH:mm");
-        time.setTextSize(72);
-        time.setTextColor(Color.WHITE);
+        time.setTextSize(60);
+        time.setTextColor(Ui.ink(this));
         time.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         time.setIncludeFontPadding(false);
         time.setGravity(Gravity.START);
         col.addView(time);
 
-        TextClock date = new TextClock(this);
-        date.setFormat24Hour("EEEE d 'de' MMMM");
-        date.setFormat12Hour("EEEE d 'de' MMMM");
-        date.setTextSize(18);
-        date.setTextColor(0xB3FFFFFF);
+        TextClock date = new TextClock(this) {
+            @Override
+            public void setText(CharSequence text, BufferType type) {
+                if (text != null) {
+                    String up = text.toString().toUpperCase(java.util.Locale.getDefault());
+                    if (!up.contentEquals(text)) {
+                        super.setText(up, type);
+                        return;
+                    }
+                }
+                super.setText(text, type);
+            }
+        };
+        date.setFormat24Hour("EEEE · d MMM");
+        date.setFormat12Hour("EEEE · d MMM");
+        date.setTextSize(16);
+        date.setTextColor(Ui.muted(this));
+        date.setSingleLine(true);
         date.setGravity(Gravity.START);
         date.setPadding(0, dp(2), 0, 0);
         col.addView(date);
 
-        // Nav (recents, home, back) sits in the status bar at the top right.
-        // These pills stay on the next row, full width, so they are not under that cluster.
-        LinearLayout pills = new LinearLayout(this);
-        pills.setOrientation(LinearLayout.HORIZONTAL);
-        pills.setGravity(Gravity.CENTER_VERTICAL);
-        dimPill = pill(dimLabel(), this::toggleDim);
-        LinearLayout.LayoutParams left = new LinearLayout.LayoutParams(0, dp(64), 1f);
-        left.rightMargin = dp(12);
-        pills.addView(dimPill, left);
-        pills.addView(pill("Ajustes", () -> startActivity(new Intent(this, SetupActivity.class))),
-                new LinearLayout.LayoutParams(0, dp(64), 1f));
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(-1, dp(64));
-        plp.topMargin = dp(10);
-        col.addView(pills, plp);
+        ImageView car = new ImageView(this);
+        car.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        Bitmap own = Profile.carPhoto(this);
+        if (own != null) {
+            car.setImageBitmap(own);
+        } else {
+            int bundled = Profile.bundledCar(this, false);
+            if (bundled != 0) car.setImageResource(bundled);
+        }
+        LinearLayout.LayoutParams carLp = new LinearLayout.LayoutParams(-1, 0, 1f);
+        carLp.topMargin = dp(4);
+        carLp.bottomMargin = dp(4);
+        col.addView(car, carLp);
+
+        col.addView(buildSpeed());
         return col;
     }
 
-    private TextView pill(String label, Runnable action) {
-        TextView b = Ui.text(this, label, 20, Color.WHITE);
-        b.setMinHeight(dp(64));
-        b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(24), dp(12), dp(24), dp(12));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0x33FFFFFF);
-        bg.setCornerRadius(dp(32));
-        bg.setStroke(dp(1), 0x66FFFFFF);
-        b.setBackground(bg);
-        Ui.pressable(b, 0.96f);
-        b.setOnClickListener(v -> action.run());
-        return b;
+    private View buildSpeed() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setMinimumHeight(dp(88));
+        card.setPadding(dp(16), dp(10), dp(12), dp(10));
+        card.setBackground(Ui.card(this));
+
+        LinearLayout numbers = new LinearLayout(this);
+        numbers.setOrientation(LinearLayout.VERTICAL);
+        numbers.setGravity(Gravity.CENTER_VERTICAL);
+
+        LinearLayout line = new LinearLayout(this);
+        line.setOrientation(LinearLayout.HORIZONTAL);
+        line.setGravity(Gravity.BOTTOM);
+        speedValue = Ui.text(this, "0", 42, Ui.ink(this));
+        speedValue.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        speedValue.setIncludeFontPadding(false);
+        speedValue.setGravity(Gravity.START | Gravity.BOTTOM);
+        line.addView(speedValue);
+        TextView unit = Ui.text(this, "km/h", 14, Ui.muted(this));
+        unit.setPadding(dp(6), 0, 0, dp(6));
+        line.addView(unit);
+        numbers.addView(line);
+
+        TextView gps = Ui.text(this, "GPS", 13, Ui.muted(this));
+        gps.setGravity(Gravity.START);
+        gps.setPadding(0, dp(2), 0, 0);
+        numbers.addView(gps);
+        card.addView(numbers);
+
+        speedScale = new SpeedScale(this);
+        LinearLayout.LayoutParams scaleLp = new LinearLayout.LayoutParams(0, dp(64), 1f);
+        scaleLp.leftMargin = dp(8);
+        card.addView(speedScale, scaleLp);
+        return card;
     }
 
-    private String dimLabel() {
-        return Ui.dimmed(this) ? "Brillo" : "Atenuar";
-    }
+    // ---------- Right: ZLink, tiles, all apps, now playing ----------
 
-    private void toggleDim() {
-        if (!Settings.System.canWrite(this)) {
-            toast("Permite modificar los ajustes del sistema para atenuar");
-            Intent i = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
-                    android.net.Uri.parse("package:" + getPackageName()));
-            Ui.safeStart(this, i);
-            return;
+    private View buildRight() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+
+        String zlink = Ui.findZlink(this);
+        if (zlink != null) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+            lp.bottomMargin = dp(10);
+            col.addView(zlinkCard(zlink), lp);
         }
-        try {
-            if (!Ui.dimmed(this)) {
-                int mode = Settings.System.getInt(getContentResolver(),
-                        Settings.System.SCREEN_BRIGHTNESS_MODE,
-                        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
-                int level = Settings.System.getInt(getContentResolver(),
-                        Settings.System.SCREEN_BRIGHTNESS, 128);
-                Ui.rememberBrightness(this, mode, level);
-                Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE,
-                        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
-                Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, 12);
-                applyWindowBrightness(12f / 255f);
-                Ui.setDimmed(this, true);
-            } else {
-                Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE,
-                        Ui.savedBrightnessMode(this));
-                Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS,
-                        Ui.savedBrightness(this));
-                applyWindowBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE);
-                Ui.setDimmed(this, false);
-            }
-        } catch (Exception e) {
-            toast("No se pudo cambiar el brillo");
-        }
-        dimPill.setText(dimLabel());
+
+        tiles = new LinearLayout(this);
+        tiles.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams tilesLp = new LinearLayout.LayoutParams(-1, 0, 1.15f);
+        tilesLp.bottomMargin = dp(10);
+        col.addView(tiles, tilesLp);
+
+        col.addView(allAppsRow(), appsRowLp());
+        col.addView(buildNowPlaying(), nowPlayingLp());
+        return col;
     }
 
-    private void applyWindowBrightness(float value) {
-        WindowManager.LayoutParams lp = getWindow().getAttributes();
-        lp.screenBrightness = value;
-        getWindow().setAttributes(lp);
+    private LinearLayout.LayoutParams appsRowLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(64));
+        lp.bottomMargin = dp(10);
+        return lp;
     }
 
-    // ---------- Now playing (MediaSession) ----------
+    private LinearLayout.LayoutParams nowPlayingLp() {
+        return new LinearLayout.LayoutParams(-1, dp(88));
+    }
 
-    private View buildHero() {
-        FrameLayout card = new FrameLayout(this);
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xFF16161A);
-        bg.setCornerRadius(dp(20));
-        bg.setStroke(dp(1), 0x33FFFFFF);
+    private View zlinkCard(String pkg) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setMinimumHeight(dp(72));
+        card.setPadding(dp(16), dp(12), dp(14), dp(12));
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{0xFF2A62F0, 0xFF1A3E9E});
+        bg.setCornerRadius(dp(18));
         card.setBackground(bg);
-        card.setClipToOutline(true);
 
-        art = new ImageView(this);
-        art.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        card.addView(art, new FrameLayout.LayoutParams(-1, -1));
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.drawable.ic_smartphone);
+        icon.setColorFilter(0xFFFFFFFF);
+        GradientDrawable disc = new GradientDrawable();
+        disc.setShape(GradientDrawable.OVAL);
+        disc.setColor(0x33FFFFFF);
+        icon.setBackground(disc);
+        int pad = dp(10);
+        icon.setPadding(pad, pad, pad, pad);
+        card.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-        View shade = new View(this);
-        shade.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[]{0xF0101012, 0xE0101012, 0xC0101012}));
-        card.addView(shade, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setPadding(dp(12), 0, dp(8), 0);
+        TextView title = Ui.text(this, "ZLink", 20, 0xFFFFFFFF);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setGravity(Gravity.START);
+        texts.addView(title);
+        TextView sub = Ui.text(this, "CarPlay · Android Auto", 14, 0xE6FFFFFF);
+        sub.setGravity(Gravity.START);
+        texts.addView(sub);
+        card.addView(texts, new LinearLayout.LayoutParams(0, -2, 1f));
 
-        LinearLayout body = new LinearLayout(this);
-        body.setOrientation(LinearLayout.HORIZONTAL);
-        body.setGravity(Gravity.CENTER_VERTICAL);
-        body.setPadding(dp(28), dp(16), dp(24), dp(16));
+        ImageView chevron = new ImageView(this);
+        chevron.setImageResource(R.drawable.ic_forward);
+        chevron.setColorFilter(0xFFFFFFFF);
+        card.addView(chevron, new LinearLayout.LayoutParams(dp(28), dp(28)));
+
+        Ui.pressable(card, 0.96f);
+        card.setOnClickListener(v -> Ui.openZlink(this, pkg));
+        return card;
+    }
+
+    private void fillTiles() {
+        tiles.removeAllViews();
+        addTile(R.drawable.ic_radio, "Radio", () -> Ui.openRadio(this));
+        addTile(R.drawable.ic_bluetooth, "Bluetooth", () -> Ui.openBluetooth(this));
+        addTile(R.drawable.ic_nav, "Mapas", () -> startActivity(new Intent(this, MapActivity.class)));
+        addTile(R.drawable.ic_play, "YT Music", () -> Ui.openYouTubeMusic(this));
+        for (String flat : Profile.favorites(this)) addFavorite(flat);
+    }
+
+    private void addTile(int icon, String name, Runnable action) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER);
+        tile.setMinimumHeight(dp(96));
+        tile.setPadding(dp(4), dp(10), dp(4), dp(8));
+        tile.setBackground(Ui.card(this));
+
+        ImageView iv = new ImageView(this);
+        iv.setImageResource(icon);
+        iv.setColorFilter(Ui.ink(this));
+        GradientDrawable disc = new GradientDrawable();
+        disc.setShape(GradientDrawable.OVAL);
+        disc.setColor(Ui.lightSurface(this) ? 0x14000000 : 0x26FFFFFF);
+        iv.setBackground(disc);
+        int pad = dp(10);
+        iv.setPadding(pad, pad, pad, pad);
+        tile.addView(iv, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        TextView label = Ui.text(this, name, 14, Ui.ink(this));
+        label.setGravity(Gravity.CENTER);
+        label.setPadding(0, dp(8), 0, 0);
+        tile.addView(label);
+
+        Ui.pressable(tile, 0.96f);
+        tile.setOnClickListener(v -> action.run());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
+        if (tiles.getChildCount() > 0) lp.leftMargin = dp(8);
+        tiles.addView(tile, lp);
+    }
+
+    private void addFavorite(String flat) {
+        ComponentName cn = ComponentName.unflattenFromString(flat);
+        if (cn == null) return;
+        PackageManager pm = getPackageManager();
+        Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(cn);
+        ResolveInfo ri = pm.resolveActivity(probe, 0);
+        if (ri == null || ri.activityInfo == null) return;
+
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER);
+        tile.setMinimumHeight(dp(96));
+        tile.setPadding(dp(4), dp(10), dp(4), dp(8));
+        tile.setBackground(Ui.card(this));
+
+        ImageView iv = new ImageView(this);
+        iv.setImageDrawable(ri.loadIcon(pm));
+        tile.addView(iv, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        TextView label = Ui.text(this, ri.loadLabel(pm), 14, Ui.ink(this));
+        label.setGravity(Gravity.CENTER);
+        label.setPadding(0, dp(8), 0, 0);
+        tile.addView(label);
+
+        String pkg = ri.activityInfo.packageName;
+        String cls = ri.activityInfo.name;
+        Ui.pressable(tile, 0.96f);
+        tile.setOnClickListener(v -> Ui.safeStart(this, new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER).setClassName(pkg, cls)));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1f);
+        lp.leftMargin = dp(8);
+        tiles.addView(tile, lp);
+    }
+
+    private View allAppsRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(64));
+        row.setPadding(dp(18), dp(8), dp(14), dp(8));
+        row.setBackground(Ui.card(this));
+
+        TextView label = Ui.text(this, "Todas las apps", 18, Ui.ink(this));
+        label.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        row.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        ImageView chevron = new ImageView(this);
+        chevron.setImageResource(R.drawable.ic_forward);
+        chevron.setColorFilter(Ui.ink(this));
+        row.addView(chevron, new LinearLayout.LayoutParams(dp(28), dp(28)));
+
+        Ui.pressable(row, 0.96f);
+        row.setOnClickListener(v -> startActivity(new Intent(this, AppsActivity.class)));
+        return row;
+    }
+
+    private View buildNowPlaying() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setMinimumHeight(dp(88));
+        card.setPadding(dp(14), dp(8), dp(10), dp(8));
+        card.setBackground(Ui.card(this));
+
+        ImageView note = new ImageView(this);
+        note.setImageResource(R.drawable.ic_music);
+        note.setColorFilter(Ui.ink(this));
+        card.addView(note, new LinearLayout.LayoutParams(dp(28), dp(28)));
 
         LinearLayout texts = new LinearLayout(this);
         texts.setOrientation(LinearLayout.VERTICAL);
         texts.setGravity(Gravity.CENTER_VERTICAL);
-
-        songSource = Ui.text(this, "MÚSICA", 16, 0xCCFFFFFF);
-        songSource.setGravity(Gravity.START);
-        songSource.setLetterSpacing(0.08f);
-        texts.addView(songSource);
-
-        songTitle = Ui.text(this, "Nada sonando", 44, Color.WHITE);
-        songTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        texts.setPadding(dp(12), 0, dp(8), 0);
+        songTitle = Ui.text(this, "Sin reproducción", 18, Ui.ink(this));
         songTitle.setGravity(Gravity.START);
-        songTitle.setSingleLine(false);
-        songTitle.setMaxLines(2);
-        songTitle.setPadding(0, dp(6), 0, 0);
+        songTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         texts.addView(songTitle);
-
-        songArtist = Ui.text(this, "", 22, 0xB3FFFFFF);
+        songArtist = Ui.text(this, "Selecciona tu música", 14, Ui.muted(this));
         songArtist.setGravity(Gravity.START);
-        songArtist.setSingleLine(false);
-        songArtist.setMaxLines(2);
-        songArtist.setPadding(0, dp(4), 0, 0);
         texts.addView(songArtist);
-        body.addView(texts, new LinearLayout.LayoutParams(0, -2, 1f));
+        card.addView(texts, new LinearLayout.LayoutParams(0, -2, 1f));
+        texts.setOnClickListener(v -> nowPlaying.open(this));
+        texts.setClickable(true);
 
+        card.addView(transport());
+        return card;
+    }
+
+    private View transport() {
         LinearLayout controls = new LinearLayout(this);
         controls.setGravity(Gravity.CENTER);
-        controls.addView(Ui.iconButton(this, R.drawable.ic_prev, 72, false, this::skipBack),
-                new LinearLayout.LayoutParams(dp(72), dp(72)));
-        playBtn = Ui.iconButton(this, R.drawable.ic_play, 84, true, this::togglePlay);
-        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(84), dp(84));
-        plp.setMargins(dp(18), 0, dp(18), 0);
+        controls.addView(Ui.iconButton(this, R.drawable.ic_prev, 56, false, this::skipBack),
+                new LinearLayout.LayoutParams(dp(56), dp(56)));
+        playBtn = Ui.iconButton(this, R.drawable.ic_play, 64, true, this::togglePlay);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(64), dp(64));
+        plp.setMargins(dp(6), 0, dp(6), 0);
         controls.addView(playBtn, plp);
-        controls.addView(Ui.iconButton(this, R.drawable.ic_next, 72, false, this::skipForward),
-                new LinearLayout.LayoutParams(dp(72), dp(72)));
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-2, -2);
-        clp.leftMargin = dp(20);
-        body.addView(controls, clp);
-        card.addView(body, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER_VERTICAL));
-
-        Ui.pressable(card, 0.96f);
-        card.setOnClickListener(v -> nowPlaying.open(this));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1f);
-        lp.topMargin = dp(8);
-        lp.bottomMargin = dp(10);
-        card.setLayoutParams(lp);
-        return card;
+        controls.addView(Ui.iconButton(this, R.drawable.ic_next, 56, false, this::skipForward),
+                new LinearLayout.LayoutParams(dp(56), dp(56)));
+        return controls;
     }
 
     private void togglePlay() {
         if (!Profile.isNwd(this) && !nowPlaying.hasSession()) {
-            toast("Nada en reproducción");
+            toast("Sin reproducción");
             return;
         }
         nowPlaying.playPause();
@@ -253,7 +404,7 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
 
     private void skipBack() {
         if (!Profile.isNwd(this) && !nowPlaying.hasSession()) {
-            toast("Nada en reproducción");
+            toast("Sin reproducción");
             return;
         }
         nowPlaying.skip(false);
@@ -261,7 +412,7 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
 
     private void skipForward() {
         if (!Profile.isNwd(this) && !nowPlaying.hasSession()) {
-            toast("Nada en reproducción");
+            toast("Sin reproducción");
             return;
         }
         nowPlaying.skip(true);
@@ -273,132 +424,80 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         NowPlaying.Source s = nowPlaying.current();
         NowPlaying.Track t = s == null ? null : nowPlaying.track(s);
         boolean empty = t == null || t.title.isEmpty();
-        songSource.setText(s == null ? "MÚSICA" : nowPlaying.label(s).toUpperCase());
-        songTitle.setText(empty ? "Nada sonando" : t.title);
+        songTitle.setText(empty ? "Sin reproducción" : t.title);
         if (empty) {
             songArtist.setText(Ui.notificationAccess(this)
-                    ? "Toca para abrir la música"
+                    ? "Selecciona tu música"
                     : "En Ajustes, permite ver la música");
         } else {
             songArtist.setText(t.artist.isEmpty() ? " " : t.artist);
         }
         playBtn.setImageResource(t != null && t.playing ? R.drawable.ic_pause : R.drawable.ic_play);
-
-        if (t != null && t.art != null) {
-            art.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            art.clearColorFilter();
-            art.setAlpha(1f);
-            art.setImageBitmap(t.art);
-        } else {
-            art.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            art.setImageDrawable(null);
-            art.setAlpha(0f);
-        }
     }
 
-    // ---------- Band ----------
+    // ---------- GPS speed. Not stored. 0 without a fix. ----------
 
-    private View buildBand() {
-        band = new LinearLayout(this);
-        band.setOrientation(LinearLayout.HORIZONTAL);
-        band.setGravity(Gravity.CENTER_VERTICAL);
-        return band;
-    }
-
-    private LinearLayout.LayoutParams tileSlot() {
-        return new LinearLayout.LayoutParams(0, -1, 1f);
-    }
-
-    private void fillBand() {
-        band.removeAllViews();
-        radioLive = null;
-        addNamed(R.drawable.ic_nav, "Mapas", () -> startActivity(new Intent(this, MapActivity.class)));
-        View radioTile = addNamed(R.drawable.ic_radio, "Radio", () -> Ui.openRadio(this));
-        radioLive = new TextView(this);
-        radioLive.setTextColor(0xB3FFFFFF);
-        radioLive.setTextSize(13);
-        radioLive.setGravity(Gravity.CENTER);
-        radioLive.setVisibility(View.GONE);
-        if (radioTile instanceof LinearLayout) ((LinearLayout) radioTile).addView(radioLive);
-        addNamed(R.drawable.ic_phone, "Teléfono", () -> Ui.openPhone(this));
-        addNamed(R.drawable.ic_bluetooth, "Bluetooth", () -> Ui.openBluetooth(this));
-        addNamed(R.drawable.ic_music, "Música", () -> nowPlaying.open(this));
-        addNamed(R.drawable.ic_play, "YT Music", () -> Ui.openYouTubeMusic(this));
-        for (String flat : Profile.favorites(this)) addFavorite(flat);
-        addNamed(R.drawable.ic_apps, "Apps", () -> startActivity(new Intent(this, AppsActivity.class)));
-    }
-
-    private View addNamed(int icon, String name, Runnable action) {
-        LinearLayout tile = new LinearLayout(this);
-        tile.setOrientation(LinearLayout.VERTICAL);
-        tile.setGravity(Gravity.CENTER);
-        tile.setMinimumHeight(dp(84));
-        tile.setPadding(dp(4), dp(8), dp(4), dp(8));
-        ImageView iv = new ImageView(this);
-        iv.setImageResource(icon);
-        iv.setColorFilter(Color.WHITE);
-        tile.addView(iv, new LinearLayout.LayoutParams(dp(40), dp(40)));
-        TextView label = Ui.text(this, name, 16, Color.WHITE);
-        label.setSingleLine(true);
-        label.setGravity(Gravity.CENTER);
-        label.setPadding(0, dp(6), 0, 0);
-        tile.addView(label);
-        Ui.pressable(tile, 0.96f);
-        tile.setOnClickListener(v -> action.run());
-        band.addView(tile, tileSlot());
-        return tile;
-    }
-
-    private void addFavorite(String flat) {
-        ComponentName cn = ComponentName.unflattenFromString(flat);
-        if (cn == null) return;
-        PackageManager pm = getPackageManager();
-        Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(cn);
-        ResolveInfo ri = pm.resolveActivity(probe, 0);
-        if (ri == null || ri.activityInfo == null) return;
-        LinearLayout tile = new LinearLayout(this);
-        tile.setOrientation(LinearLayout.VERTICAL);
-        tile.setGravity(Gravity.CENTER);
-        tile.setMinimumHeight(dp(84));
-        tile.setPadding(dp(4), dp(8), dp(4), dp(8));
-        ImageView iv = new ImageView(this);
-        iv.setImageDrawable(ri.loadIcon(pm));
-        tile.addView(iv, new LinearLayout.LayoutParams(dp(40), dp(40)));
-        TextView label = Ui.text(this, ri.loadLabel(pm), 16, Color.WHITE);
-        label.setPadding(0, dp(6), 0, 0);
-        tile.addView(label);
-        Ui.pressable(tile, 0.96f);
-        String pkg = ri.activityInfo.packageName;
-        String cls = ri.activityInfo.name;
-        tile.setOnClickListener(v -> {
-            Intent i = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-                    .setClassName(pkg, cls);
-            Ui.safeStart(this, i);
-        });
-        band.addView(tile, tileSlot());
-    }
-
-    private void updateRadio() {
-        if (radioLive == null || !Profile.isNwd(this)) return;
-        RadioClient.Station st = radio.current();
-        if (st == null) {
-            radioLive.setText("");
-            radioLive.setVisibility(View.GONE);
+    private void watchSpeed() {
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            showSpeed(null);
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 7);
             return;
         }
-        String label = st.frequencyLabel();
-        if (label == null || label.isEmpty()) {
-            radioLive.setText("");
-            radioLive.setVisibility(View.GONE);
-            return;
+        locations = (LocationManager) getSystemService(LOCATION_SERVICE);
+        Location best = newer(last(LocationManager.GPS_PROVIDER), last(LocationManager.NETWORK_PROVIDER));
+        boolean fresh = best != null && System.currentTimeMillis() - best.getTime() < 2 * 60 * 1000L;
+        showSpeed(fresh ? best : null);
+        if (listening || locations == null) return;
+        try {
+            locations.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, speedFix);
+            listening = true;
+        } catch (Exception ignored) { }
+        try {
+            locations.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000, 0, speedFix);
+            listening = true;
+        } catch (Exception ignored) { }
+    }
+
+    private void showSpeed(Location location) {
+        float mps = location != null && location.hasSpeed() ? location.getSpeed() : 0f;
+        int kmh = mps > 0f ? Math.round(mps * 3.6f) : 0;
+        if (speedValue != null) speedValue.setText(String.valueOf(kmh));
+        if (speedScale != null) speedScale.setKmh(kmh);
+    }
+
+    private Location last(String provider) {
+        try {
+            return locations == null ? null : locations.getLastKnownLocation(provider);
+        } catch (Exception e) {
+            return null;
         }
-        radioLive.setText(label);
-        radioLive.setVisibility(View.VISIBLE);
+    }
+
+    private static Location newer(Location a, Location b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return a.getTime() >= b.getTime() ? a : b;
+    }
+
+    private void stopSpeed() {
+        if (locations != null && listening) {
+            try {
+                locations.removeUpdates(speedFix);
+            } catch (Exception ignored) { }
+        }
+        listening = false;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        if (code == 7 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
+            watchSpeed();
+        }
     }
 
     private final Runnable nightWatch = new Runnable() {
         public void run() {
-            if (Ui.nightHours() != createdNight || Ui.isDark(MainActivity.this) != createdDark) {
+            if (Ui.isDark(MainActivity.this) != createdDark) {
                 recreate();
                 return;
             }
@@ -406,24 +505,16 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         }
     };
 
-    private final Runnable radioPoll = new Runnable() {
-        public void run() {
-            updateRadio();
-            handler.postDelayed(this, 1000);
-        }
-    };
-
     @Override
     protected void onResume() {
         super.onResume();
-        if (Ui.isDark(this) != createdDark || Ui.nightHours() != createdNight) {
+        if (Ui.isDark(this) != createdDark || (Ui.findZlink(this) != null) != createdZlink) {
             recreate();
             return;
         }
-        fillBand();
-        dimPill.setText(dimLabel());
-        if (Ui.dimmed(this)) applyWindowBrightness(12f / 255f);
-        if (Profile.isNwd(this)) handler.post(radioPoll);
+        fillTiles();
+        if (Ui.dimmed(this)) Ui.applyDim(this);
+        watchSpeed();
         handler.postDelayed(nightWatch, 60_000);
         nowPlaying.addListener(this);
         onNowPlayingChanged();
@@ -432,15 +523,9 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
     @Override
     protected void onPause() {
         super.onPause();
-        handler.removeCallbacks(radioPoll);
         handler.removeCallbacks(nightWatch);
+        stopSpeed();
         nowPlaying.removeListener(this);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (radioBound) radio.unbind(this);
     }
 
     private void toast(String s) {

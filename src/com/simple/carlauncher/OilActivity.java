@@ -39,7 +39,7 @@ public class OilActivity extends Activity {
         bar0.setGravity(Gravity.CENTER_VERTICAL);
         bar0.addView(Ui.iconButton(this, R.drawable.ic_back, 56, false, this::finish),
                 new LinearLayout.LayoutParams(dp(56), dp(56)));
-        TextView title = Ui.text(this, "Cambio de aceite", 26, Color.WHITE);
+        TextView title = Ui.text(this, "Cambio de aceite", 26, Ui.ink(this));
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         title.setPadding(dp(16), 0, 0, 0);
@@ -65,7 +65,7 @@ public class OilActivity extends Activity {
         card.setGravity(Gravity.CENTER);
         card.setPadding(dp(28), dp(20), dp(28), dp(20));
         statusBg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                Ui.pick(this, new int[]{0x993FA9FF, 0x667B4DFF}, new int[]{0xFF1E1E28, 0xFF121218}));
+                new int[]{0xFF1E1E28, 0xFF121218});
         statusBg.setCornerRadius(dp(18));
         card.setBackground(statusBg);
 
@@ -104,20 +104,20 @@ public class OilActivity extends Activity {
             Toast.makeText(this, "¡Listo! Registrado el cambio de aceite", Toast.LENGTH_SHORT).show();
             refresh();
         }));
-        card.addView(action("Ajustar kilometraje del tablero", 0x334F7BFF,
+        card.addView(action("Ajustar kilometraje del tablero", 0xFF2457D6,
                 () -> askKm("Kilometraje actual del tablero", Odometer.currentKm(this), km -> {
                     boolean first = !Odometer.isConfigured(this);
                     Odometer.setCurrentKm(this, km);
                     if (first) Odometer.setLastChangeKm(this, km);
                     refresh();
                 })));
-        card.addView(action("Último cambio fue a los… km", 0x334F7BFF,
+        card.addView(action("Último cambio fue a los… km", 0xFF2457D6,
                 () -> askKm("Kilometraje del último cambio", Odometer.lastChangeKm(this), km -> {
                     Odometer.setLastChangeKm(this, km);
                     refresh();
                 })));
 
-        TextView every = Ui.text(this, "Cambiar cada", 15, 0xCCFFFFFF);
+        TextView every = Ui.text(this, "Cambiar cada", 15, Ui.ink(this));
         every.setGravity(Gravity.START);
         every.setPadding(dp(4), dp(14), 0, dp(8));
         card.addView(every);
@@ -138,7 +138,7 @@ public class OilActivity extends Activity {
         }
         card.addView(chips);
 
-        TextView note = Ui.text(this, "Los km se cuentan con el GPS de la radio. Ajusta el tablero de vez en cuando para mayor precisión.", 12, 0x80FFFFFF);
+        TextView note = Ui.text(this, "Los km se cuentan con el GPS de la radio. Ajusta el tablero de vez en cuando para mayor precisión.", 12, Ui.muted(this));
         note.setSingleLine(false);
         note.setPadding(dp(4), dp(14), dp(4), 0);
         card.addView(note);
@@ -198,13 +198,15 @@ public class OilActivity extends Activity {
             bar.setProgress(Math.max(0, Math.min(1000, (interval - rem) * 1000 / Math.max(1, interval))));
             statusBg.setColors(rem < 0 ? new int[]{0xCCE53935, 0x99B71C1C}
                     : rem <= Odometer.WARN_KM ? new int[]{0xCCFF9800, 0x99E65100}
-                    : Ui.pick(this, new int[]{0x993FA9FF, 0x667B4DFF}, new int[]{0xFF1E1E28, 0xFF121218}));
+                    : new int[]{0xFF1E1E28, 0xFF121218});
         }
         for (int i = 0; i < INTERVALS.length; i++) {
             GradientDrawable bg = new GradientDrawable();
             bg.setCornerRadius(dp(12));
-            bg.setColor(INTERVALS[i] == Odometer.intervalKm(this) ? 0xFF4F7BFF : 0x1FFFFFFF);
+            boolean on = INTERVALS[i] == Odometer.intervalKm(this);
+            bg.setColor(on ? 0xFF4F7BFF : (Ui.lightSurface(this) ? 0xFFE4E7EC : 0x1FFFFFFF));
             intervalChips[i].setBackground(bg);
+            intervalChips[i].setTextColor(on || !Ui.lightSurface(this) ? Color.WHITE : Ui.ink(this));
         }
     }
 

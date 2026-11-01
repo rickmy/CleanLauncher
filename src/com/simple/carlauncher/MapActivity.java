@@ -71,7 +71,7 @@ public class MapActivity extends Activity implements LocationListener {
         time.setFormat24Hour("HH:mm");
         time.setFormat12Hour("HH:mm");
         time.setTextSize(72);
-        time.setTextColor(Color.WHITE);
+        time.setTextColor(Ui.ink(this));
         time.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
         time.setIncludeFontPadding(false);
         time.setGravity(Gravity.START);
@@ -81,7 +81,7 @@ public class MapActivity extends Activity implements LocationListener {
         date.setFormat24Hour("EEEE d 'de' MMMM");
         date.setFormat12Hour("EEEE d 'de' MMMM");
         date.setTextSize(18);
-        date.setTextColor(0xB3FFFFFF);
+        date.setTextColor(Ui.muted(this));
         date.setGravity(Gravity.START);
         date.setPadding(0, dp(2), 0, 0);
         col.addView(date);
@@ -112,15 +112,11 @@ public class MapActivity extends Activity implements LocationListener {
     }
 
     private TextView pill(String label, Runnable action) {
-        TextView b = Ui.text(this, label, 20, Color.WHITE);
+        TextView b = Ui.text(this, label, 20, Ui.ink(this));
         b.setMinHeight(dp(64));
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(24), dp(12), dp(24), dp(12));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0x33FFFFFF);
-        bg.setCornerRadius(dp(32));
-        bg.setStroke(dp(1), 0x66FFFFFF);
-        b.setBackground(bg);
+        b.setBackground(Ui.card(this));
         Ui.pressable(b, 0.96f);
         b.setOnClickListener(v -> action.run());
         return b;
@@ -311,9 +307,9 @@ public class MapActivity extends Activity implements LocationListener {
         tile.setPadding(dp(4), dp(8), dp(4), dp(8));
         ImageView iv = new ImageView(this);
         iv.setImageResource(icon);
-        iv.setColorFilter(Color.WHITE);
+        iv.setColorFilter(Ui.ink(this));
         tile.addView(iv, new LinearLayout.LayoutParams(dp(40), dp(40)));
-        TextView label = Ui.text(this, name, 16, Color.WHITE);
+        TextView label = Ui.text(this, name, 16, Ui.ink(this));
         label.setSingleLine(true);
         label.setGravity(Gravity.CENTER);
         label.setPadding(0, dp(6), 0, 0);
@@ -338,7 +334,7 @@ public class MapActivity extends Activity implements LocationListener {
         ImageView iv = new ImageView(this);
         iv.setImageDrawable(ri.loadIcon(pm));
         tile.addView(iv, new LinearLayout.LayoutParams(dp(40), dp(40)));
-        TextView label = Ui.text(this, ri.loadLabel(pm), 16, Color.WHITE);
+        TextView label = Ui.text(this, ri.loadLabel(pm), 16, Ui.ink(this));
         label.setPadding(0, dp(6), 0, 0);
         tile.addView(label);
         Ui.pressable(tile, 0.96f);

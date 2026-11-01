@@ -47,18 +47,30 @@ final class Ui {
     }
 
     /**
-     * On this MediaTek unit the NWD headlight bit never arrives, so automatic stays dark
-     * all day (Quito sun washes out the old blue gradient). The NWD path still follows
-     * the ILL wire and the clock.
+     * This Almera has no headlight CAN bit. Day is light from 06:00 through 18:59
+     * and night is dark from 19:00 through 05:59, from the device clock alone.
+     * An NWD unit still follows its ILL wire and the clock.
      */
     static boolean isDark(Context c) {
+        if (!Profile.isNwd(c)) return nightHours();
         String m = themeMode(c);
         if (THEME_DARK.equals(m)) return true;
-        if (THEME_LIGHT.equals(m) && Profile.isNwd(c)) return false;
-        if (!Profile.isNwd(c)) return true;
+        if (THEME_LIGHT.equals(m)) return false;
         int ill = Settings.System.getInt(c.getContentResolver(), "mcu_no_source_device_state", 0);
-        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
-        return (ill & 2) != 0 || h >= 19 || h < 6;
+        return (ill & 2) != 0 || nightHours();
+    }
+
+    /** Near-white surface and dark type. False on the old NWD blue daytime screen. */
+    static boolean lightSurface(Context c) {
+        return !isDark(c) && !Profile.isNwd(c);
+    }
+
+    static int ink(Context c) {
+        return lightSurface(c) ? 0xFF121418 : Color.WHITE;
+    }
+
+    static int muted(Context c) {
+        return lightSurface(c) ? 0xFF2A3038 : 0xB3FFFFFF;
     }
 
     static boolean nightHours() {
@@ -72,17 +84,14 @@ final class Ui {
     }
 
     static Drawable background(Context c) {
+        if (lightSurface(c)) {
+            GradientDrawable day = new GradientDrawable();
+            day.setColor(0xFFF4F6F8);
+            return day;
+        }
         if (isDark(c)) {
-            // Black all day. The halo sits lower at night; it is not the blue daytime wash.
-            boolean night = nightHours();
-            GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                    new int[]{0xFF0C0C0E, 0xFF070708, 0xFF000000});
-            GradientDrawable glow = new GradientDrawable();
-            glow.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-            glow.setGradientRadius(dp(c, night ? 240 : 420));
-            glow.setGradientCenter(0.5f, 1.05f);
-            glow.setColors(new int[]{night ? 0x10141820 : 0x24303842, 0x00000000});
-            return new LayerDrawable(new Drawable[]{base, glow});
+            return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{0xFF0C1424, 0xFF070B14, 0xFF05080E});
         }
         GradientDrawable base = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 new int[]{0xFF1B2C8C, 0xFF20206E, 0xFF371764});
@@ -100,11 +109,19 @@ final class Ui {
     }
 
     static GradientDrawable card(Context c) {
-        boolean dark = isDark(c);
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                dark ? new int[]{0xFF17171E, 0xFF101015} : new int[]{0x4D5B6CFF, 0x333B3FB8});
+        GradientDrawable bg = new GradientDrawable();
         bg.setCornerRadius(dp(c, 18));
-        bg.setStroke(dp(c, 1), dark ? 0x14FFFFFF : 0x337F9CFF);
+        if (lightSurface(c)) {
+            bg.setColor(0xFFFFFFFF);
+            bg.setStroke(dp(c, 1), 0x33000000);
+        } else if (isDark(c)) {
+            bg.setColor(0xFF141C2E);
+            bg.setStroke(dp(c, 1), 0x332C4066);
+        } else {
+            bg.setOrientation(GradientDrawable.Orientation.TOP_BOTTOM);
+            bg.setColors(new int[]{0x4D5B6CFF, 0x333B3FB8});
+            bg.setStroke(dp(c, 1), 0x337F9CFF);
+        }
         return bg;
     }
 
@@ -132,8 +149,9 @@ final class Ui {
         b.setImageResource(icon);
         int pad = Math.round(sizeDp * 0.24f);
         b.setPadding(dp(c, pad), dp(c, pad), dp(c, pad), dp(c, pad));
-        b.setBackground(circle(filled ? Color.WHITE : 0x26FFFFFF));
-        b.setColorFilter(filled ? 0xFF2A1F6E : Color.WHITE);
+        boolean light = lightSurface(c);
+        b.setBackground(circle(filled ? 0xFF2F6BFF : (light ? 0x14000000 : 0x26FFFFFF)));
+        b.setColorFilter(filled || !light ? Color.WHITE : 0xFF121418);
         pressable(b, 0.88f);
         b.setOnClickListener(v -> action.run());
         return b;
@@ -231,6 +249,49 @@ final class Ui {
         }
     }
 
+    /**
+     * ZLink (CarPlay / Android Auto), if this unit has it.
+     * Tries the usual package names, then any package whose name contains "zlink".
+     */
+    static String findZlink(Context c) {
+        PackageManager pm = c.getPackageManager();
+        for (String pkg : new String[]{"com.zjinnova.zlink", "com.zjinnova.zlink5"}) {
+            if (packageInstalled(pm, pkg)) return pkg;
+        }
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+            if (ri.activityInfo == null || ri.activityInfo.packageName == null) continue;
+            if (ri.activityInfo.packageName.toLowerCase(java.util.Locale.ROOT).contains("zlink")) {
+                return ri.activityInfo.packageName;
+            }
+        }
+        try {
+            for (android.content.pm.ApplicationInfo ai : pm.getInstalledApplications(0)) {
+                if (ai.packageName != null
+                        && ai.packageName.toLowerCase(java.util.Locale.ROOT).contains("zlink")) {
+                    return ai.packageName;
+                }
+            }
+        } catch (Exception ignored) { }
+        return null;
+    }
+
+    static void openZlink(Context c, String pkg) {
+        Intent launch = c.getPackageManager().getLaunchIntentForPackage(pkg);
+        if (launch == null || !safeStart(c, launch)) {
+            Toast.makeText(c, "No se pudo abrir ZLink", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static boolean packageInstalled(PackageManager pm, String pkg) {
+        try {
+            pm.getPackageInfo(pkg, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
+    }
+
     /** YouTube Music. A missing package is a short notice, not a crash. */
     static void openYouTubeMusic(Context c) {
         Intent launch = c.getPackageManager()
@@ -265,6 +326,49 @@ final class Ui {
     static boolean notificationAccess(Context c) {
         String listeners = Settings.Secure.getString(c.getContentResolver(), "enabled_notification_listeners");
         return listeners != null && listeners.contains(c.getPackageName());
+    }
+
+    static void applyDim(Context c) {
+        if (!(c instanceof android.app.Activity)) return;
+        android.view.Window w = ((android.app.Activity) c).getWindow();
+        android.view.WindowManager.LayoutParams lp = w.getAttributes();
+        lp.screenBrightness = dimmed(c) ? 12f / 255f
+                : android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+        w.setAttributes(lp);
+    }
+
+    /** Screen brightness, not the panel's headlight wire. Returns false if permission is missing. */
+    static boolean toggleDim(Context c) {
+        if (!Settings.System.canWrite(c)) {
+            safeStart(c, new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                    Uri.parse("package:" + c.getPackageName())));
+            return false;
+        }
+        try {
+            if (!dimmed(c)) {
+                int mode = Settings.System.getInt(c.getContentResolver(),
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+                int level = Settings.System.getInt(c.getContentResolver(),
+                        Settings.System.SCREEN_BRIGHTNESS, 128);
+                rememberBrightness(c, mode, level);
+                Settings.System.putInt(c.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+                Settings.System.putInt(c.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, 12);
+                setDimmed(c, true);
+            } else {
+                Settings.System.putInt(c.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        savedBrightnessMode(c));
+                Settings.System.putInt(c.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS,
+                        savedBrightness(c));
+                setDimmed(c, false);
+            }
+            applyDim(c);
+            return true;
+        } catch (Exception e) {
+            Toast.makeText(c, "No se pudo cambiar el brillo", Toast.LENGTH_SHORT).show();
+            return false;
+        }
     }
 
     static boolean dimmed(Context c) {
