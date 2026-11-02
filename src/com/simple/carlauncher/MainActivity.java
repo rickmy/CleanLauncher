@@ -259,6 +259,7 @@ public class MainActivity extends Activity implements NowPlaying.Listener {
         addTile(R.drawable.ic_bluetooth, "Bluetooth", () -> Ui.openBluetooth(this));
         addTile(R.drawable.ic_nav, "Mapas", () -> startActivity(new Intent(this, MapActivity.class)));
         addTile(R.drawable.ic_play, "YT Music", () -> Ui.openYouTubeMusic(this));
+        addTile(R.drawable.ic_eq, "Ecualizador", () -> Ui.openEqualizer(this));
         for (String flat : Profile.favorites(this)) addFavorite(flat);
     }
 
