@@ -312,15 +312,80 @@ final class Ui {
         }
     }
 
+    /**
+     * NWD keeps {@link EqActivity}, which binds {@code com.nwd.setting.service}.
+     * This unit does not. Look for its own equalizer, then the system panel.
+     * Never binds the NWD sound service from here.
+     */
     static void openEqualizer(Context c) {
         if (Profile.isNwd(c)) {
             c.startActivity(new Intent(c, EqActivity.class));
             return;
         }
-        Intent eq = new Intent(android.media.audiofx.AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL);
-        if (!safeStart(c, eq) && !launchByKeyword(c, "ecualiz", "equaliz", "audio", "sonido", "dsp")) {
-            Toast.makeText(c, "No se encontró un ecualizador", Toast.LENGTH_SHORT).show();
+        Intent unit = unitEqualizer(c);
+        if (unit != null && safeStart(c, unit)) return;
+        Intent panel = new Intent(android.media.audiofx.AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL);
+        if (!safeStart(c, panel)) {
+            Toast.makeText(c, "Este radio no presta el ecualizador a otras apps.", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /**
+     * Launcher activity whose package or label looks like this unit's EQ.
+     * Skips this launcher. "eq" only counts as its own word, not inside "request".
+     */
+    private static Intent unitEqualizer(Context c) {
+        PackageManager pm = c.getPackageManager();
+        String self = c.getPackageName();
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        Intent bestIntent = null;
+        int best = Integer.MAX_VALUE;
+        for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+            if (ri.activityInfo == null || ri.activityInfo.packageName == null) continue;
+            String pkg = ri.activityInfo.packageName;
+            if (self.equals(pkg) || pkg.startsWith("com.nwd.")) continue;
+            int rank = eqRank(pkg, String.valueOf(ri.loadLabel(pm)));
+            if (rank < 0 || rank >= best) continue;
+            best = rank;
+            bestIntent = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setClassName(pkg, ri.activityInfo.name);
+        }
+        try {
+            for (android.content.pm.ApplicationInfo ai : pm.getInstalledApplications(0)) {
+                if (ai.packageName == null || self.equals(ai.packageName) || ai.packageName.startsWith("com.nwd.")) {
+                    continue;
+                }
+                int rank = eqRank(ai.packageName, "");
+                if (rank < 0 || rank >= best) continue;
+                Intent launch = pm.getLaunchIntentForPackage(ai.packageName);
+                if (launch == null) continue;
+                best = rank;
+                bestIntent = launch;
+            }
+        } catch (Exception ignored) { }
+        return bestIntent;
+    }
+
+    private static int eqRank(String pkg, String label) {
+        String blob = (pkg + " " + label).toLowerCase(java.util.Locale.ROOT);
+        if (blob.contains("equalizer") || blob.contains("ecualiz")) return 0;
+        if (blob.contains("dsp")) return 1;
+        if (blob.contains("sound settings") || blob.contains("soundsettings")
+                || blob.contains("sound_settings") || blob.contains("sound-settings")
+                || blob.contains("ajustes de sonido")) return 2;
+        if (eqToken(pkg) || eqToken(label)) return 3;
+        return -1;
+    }
+
+    private static boolean eqToken(String s) {
+        String n = s.toLowerCase(java.util.Locale.ROOT);
+        for (int i = 0; i < n.length() - 1; i++) {
+            if (n.charAt(i) != 'e' || n.charAt(i + 1) != 'q') continue;
+            boolean before = i == 0 || !Character.isLetter(n.charAt(i - 1));
+            boolean after = i + 2 >= n.length() || !Character.isLetter(n.charAt(i + 2));
+            if (before && after) return true;
+        }
+        return false;
     }
 
     static boolean notificationAccess(Context c) {

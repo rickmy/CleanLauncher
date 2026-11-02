@@ -30,6 +30,11 @@ public class EqActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (!Profile.isNwd(this)) {
+            Ui.openEqualizer(this);
+            finish();
+            return;
+        }
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(16), dp(12), dp(16), dp(14));
